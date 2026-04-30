@@ -160,12 +160,36 @@ export async function uploadFlow(
         try {
             const usedKeys = extractConnectionKeys(text);
             if (usedKeys.length > 0) {
+                output.appendLine(`[connections] flow uses ${usedKeys.length} connection reference(s): ${usedKeys.join(', ')}`);
                 const refs = await client.listConnectionReferences(usedKeys);
                 const byName = new Map(refs.map(r => [r.logicalName.toLowerCase(), r]));
+                output.appendLine(`[connections] environment returned ${refs.length} matching reference(s):`);
+                for (const k of usedKeys) {
+                    const r = byName.get(k.toLowerCase());
+                    if (!r) {
+                        output.appendLine(`  - ${k}: NOT FOUND in environment`);
+                    } else if (!r.connectionId) {
+                        output.appendLine(`  - ${k}: found ('${r.displayName ?? ''}') but NOT bound to a connection`);
+                    } else {
+                        output.appendLine(`  - ${k}: OK ('${r.displayName ?? ''}', connectionId=${r.connectionId})`);
+                    }
+                }
                 const missing = usedKeys.filter(k => !byName.get(k.toLowerCase())?.connectionId);
                 if (missing.length > 0) {
+                    // Help the user spot the right logical name by dumping every
+                    // connection reference visible in the environment.
+                    try {
+                        const all = await client.listConnectionReferences();
+                        output.appendLine(`[connections] environment has ${all.length} connection reference(s) total:`);
+                        for (const r of all) {
+                            output.appendLine(`    • ${r.logicalName}  ('${r.displayName ?? ''}', connectionId=${r.connectionId ?? '<unbound>'})`);
+                        }
+                    } catch (e: any) {
+                        output.appendLine(`[connections] could not list all references: ${e.message ?? e}`);
+                    }
+                    const numbered = missing.map((k, i) => `${i + 1}. ${k}`).join('\n');
                     const pick = await vscode.window.showWarningMessage(
-                        `These connection references are not bound to an active connection in this environment: ${missing.join(', ')}.\nUpload anyway?`,
+                        `These connection references are not bound to an active connection in this environment:\n\n${numbered}\n\nPlease fix them before uploading.`,
                         { modal: true },
                         'Upload anyway'
                     );
@@ -235,5 +259,23 @@ function extractConnectionKeys(text: string): string[] {
         for (const v of Object.values(obj)) { walk(v); }
     };
     walk(parsed);
-    return [...out];
+
+    // Map flow-local keys (e.g. "shared_onedrive") to the Dataverse
+    // connection-reference logical name (e.g. "new_sharedonedrive_a1b2"),
+    // which is what the connectionreferences table is keyed by. The mapping
+    // lives at `properties.connectionReferences.<key>.connection.connectionReferenceLogicalName`
+    // (case variants exist across exports). When a mapping exists, prefer the
+    // logical name; otherwise fall through with the local key.
+    const refsRoot = (parsed as any)?.properties?.connectionReferences
+        ?? (parsed as any)?.connectionReferences;
+    const resolved = new Set<string>();
+    for (const key of out) {
+        const entry = refsRoot && typeof refsRoot === 'object' ? (refsRoot as Record<string, any>)[key] : undefined;
+        const logical = entry?.connection?.connectionReferenceLogicalName
+            ?? entry?.connection?.ConnectionReferenceLogicalName
+            ?? entry?.connectionReferenceLogicalName
+            ?? entry?.ConnectionReferenceLogicalName;
+        resolved.add(typeof logical === 'string' && logical ? logical : key);
+    }
+    return [...resolved];
 }

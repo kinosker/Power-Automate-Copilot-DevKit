@@ -10,6 +10,7 @@ import { validateFlowCommand } from './commands/validateFlow';
 import { assertSafeSolutionName } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
+import { lintFlowFile } from './validation/runLint';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel('Power Automate');
@@ -27,6 +28,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Diagnostics for flow validation; ensure cleanup on deactivate.
     context.subscriptions.push({ dispose: disposeDiagnosticCollection });
     void getDiagnosticCollection();
+
+    // Re-lint flow JSON files automatically on save so Problems stay in sync.
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument(async (doc) => {
+            if (doc.uri.scheme !== 'file') { return; }
+            const fsPath = doc.uri.fsPath;
+            if (!/[\\/]Workflows[\\/]/i.test(fsPath) || !fsPath.toLowerCase().endsWith('.json')) { return; }
+            try {
+                await lintFlowFile(fsPath);
+            } catch (e: any) {
+                output.appendLine(`[validate-on-save] ${fsPath}: ${e?.message ?? e}`);
+            }
+        })
+    );
 
     // Background pac presence check; non-blocking.
     void (async () => {

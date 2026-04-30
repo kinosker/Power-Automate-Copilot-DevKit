@@ -1,3 +1,31 @@
+/**
+ * Flow linter — static analyzer for unpacked Power Automate / Logic Apps
+ * flow JSON. Read-only: produces findings, never rewrites the document.
+ *
+ * Responsibilities:
+ *   1. Parse & shape — verify valid JSON with `properties.definition`
+ *      containing object `triggers` and `actions` maps.
+ *   2. Operation traversal — recursively collect every trigger and action,
+ *      descending into nested containers (scope/foreach `actions`,
+ *      condition `actions` + `else.actions`, switch `cases.<x>.actions`,
+ *      `default.actions`).
+ *   3. Per-operation rules:
+ *        - `triggerOrActionShape`: each operation has a string `type`.
+ *        - `runAfterTarget`: `runAfter` keys must reference existing
+ *          sibling actions and never the operation itself.
+ *        - `connectionKeyDeclared`: `inputs.host.connectionName` must be
+ *          a declared connection reference (when solution context known).
+ *        - `foreachSequential`: warn when a Foreach with write-style
+ *          child actions is not marked Sequential (race-condition risk).
+ *        - `teamsRecipientShape`: Teams `PostMessageToConversation`
+ *          recipient shape must match the selected poster (Flow bot vs
+ *          channel).
+ *   4. Expression scan — every `@`-prefixed string leaf under
+ *      `definition` is passed through advisory expression-language checks.
+ *
+ * Each finding carries a rule id, severity, JSON path, and byte
+ * offset/length so `diagnostics.ts` can map it onto a VS Code Diagnostic.
+ */
 import { parseTree, Node, findNodeAtLocation, getNodePath } from 'jsonc-parser';
 
 export type LintSeverity = 'error' | 'warning';
@@ -63,14 +91,58 @@ export function lintFlow(text: string, ctx: LintContext = {}): LintFinding[] {
         findings.push(diag('shape', 'error', 'definition.actions must be an object.', [...definitionPath, 'actions'], definitionNode));
     }
 
+    // Required WDL metadata.
+    const schemaNode = findNodeAtLocation(definitionNode, ['$schema']);
+    if (!schemaNode || schemaNode.type !== 'string') {
+        findings.push(diag('definitionMeta', 'error',
+            'definition.$schema is required and must be a string.',
+            [...definitionPath, '$schema'], definitionNode));
+    }
+    const contentVersionNode = findNodeAtLocation(definitionNode, ['contentVersion']);
+    if (!contentVersionNode || contentVersionNode.type !== 'string') {
+        findings.push(diag('definitionMeta', 'error',
+            'definition.contentVersion is required and must be a string.',
+            [...definitionPath, 'contentVersion'], definitionNode));
+    }
+
+    // Trigger count: Power Automate cloud flows must have exactly one trigger.
+    if (triggersNode?.type === 'object') {
+        const triggerKeys = (triggersNode.children ?? []).filter(c => c.type === 'property');
+        if (triggerKeys.length === 0) {
+            findings.push(diag('triggerCount', 'error',
+                'A flow must define exactly one trigger; definition.triggers is empty.',
+                [...definitionPath, 'triggers'], triggersNode));
+        } else if (triggerKeys.length > 1) {
+            // Flag every trigger after the first.
+            for (let i = 1; i < triggerKeys.length; i++) {
+                const prop = triggerKeys[i];
+                const keyNode = prop.children?.[0];
+                const name = keyNode ? String(keyNode.value) : '';
+                findings.push(diag('triggerCount', 'error',
+                    `A flow must define exactly one trigger; extra trigger '${name}' is not allowed.`,
+                    [...definitionPath, 'triggers', name], keyNode ?? prop));
+            }
+        }
+    }
+
+    // At least one action.
+    if (actionsNode?.type === 'object') {
+        const actionKeys = (actionsNode.children ?? []).filter(c => c.type === 'property');
+        if (actionKeys.length === 0) {
+            findings.push(diag('actionCount', 'error',
+                'A flow must contain at least one action; definition.actions is empty.',
+                [...definitionPath, 'actions'], actionsNode));
+        }
+    }
+
     // Collect every action (top-level + nested in scopes/foreach/if/switch) so
     // that runAfter targets and per-action rules can be evaluated globally.
     const actions: ActionEntry[] = [];
     if (triggersNode?.type === 'object') {
-        collectOperations(triggersNode, [...definitionPath, 'triggers'], actions, /*isTrigger*/ true);
+        collectOperations(triggersNode, [...definitionPath, 'triggers'], actions, /*isTrigger*/ true, findings);
     }
     if (actionsNode?.type === 'object') {
-        collectOperations(actionsNode, [...definitionPath, 'actions'], actions, /*isTrigger*/ false);
+        collectOperations(actionsNode, [...definitionPath, 'actions'], actions, /*isTrigger*/ false, findings);
     }
 
     // Build sibling-name maps for runAfter validation. runAfter targets refer
@@ -92,12 +164,81 @@ export function lintFlow(text: string, ctx: LintContext = {}): LintFinding[] {
         runRulesForAction(a, ctx, siblingsByParent, findings);
     }
 
+    // Definition-wide design rules.
+    runDefinitionDesignRules(definitionNode, definitionPath as unknown as (string | number)[], actions, findings);
+
     // Whole-document expression scans (advisory).
     if (definitionNode.type === 'object') {
         scanExpressions(definitionNode, [...definitionPath], findings);
     }
 
     return findings;
+}
+
+/** Run rules that need a global view of the definition (counts, scope presence, error handling). */
+function runDefinitionDesignRules(
+    definitionNode: Node,
+    definitionPath: (string | number)[],
+    actions: ActionEntry[],
+    out: LintFinding[]
+): void {
+    const nonTriggerActions = actions.filter(a => !a.isTrigger);
+    const total = nonTriggerActions.length;
+
+    // actionLimit: Power Automate caps actions at 250.
+    if (total > 200) {
+        out.push(diag('actionLimit', 'warning',
+            `Flow has ${total} actions; the platform cap is 250. Consider splitting into child flows.`,
+            [...definitionPath, 'actions'], definitionNode));
+    }
+
+    // parameterLimit: cap of 50.
+    const params = findNodeAtLocation(definitionNode, ['parameters']);
+    if (params?.type === 'object') {
+        const count = (params.children ?? []).filter(c => c.type === 'property').length;
+        if (count > 40) {
+            out.push(diag('parameterLimit', 'warning',
+                `Flow defines ${count} parameters; the platform cap is 50.`,
+                [...definitionPath, 'parameters'], params));
+        }
+    }
+
+    // largeFlowNoScope: many actions, no Scope grouping.
+    if (total > 15) {
+        const hasScope = nonTriggerActions.some(a => {
+            const t = findNodeAtLocation(a.node, ['type']);
+            return t?.type === 'string' && /^scope$/i.test(String(t.value));
+        });
+        if (!hasScope) {
+            out.push(diag('largeFlowNoScope', 'warning',
+                `Flow has ${total} actions but no Scope. Group related actions into Scopes for readability and structured error handling.`,
+                [...definitionPath, 'actions'], definitionNode));
+        }
+    }
+
+    // noErrorHandling: no action runs after a Failed/TimedOut status anywhere.
+    if (total > 10) {
+        const handlesFailure = nonTriggerActions.some(a => {
+            const ra = findNodeAtLocation(a.node, ['runAfter']);
+            if (ra?.type !== 'object' || !ra.children) { return false; }
+            for (const prop of ra.children) {
+                const arr = prop.children?.[1];
+                if (arr?.type !== 'array' || !arr.children) { continue; }
+                for (const item of arr.children) {
+                    if (item.type === 'string') {
+                        const v = String(item.value);
+                        if (v === 'Failed' || v === 'TimedOut') { return true; }
+                    }
+                }
+            }
+            return false;
+        });
+        if (!handlesFailure) {
+            out.push(diag('noErrorHandling', 'warning',
+                `Flow has ${total} actions but no path handling Failed or TimedOut. Add a catch via runAfter to surface or recover from errors.`,
+                [...definitionPath, 'actions'], definitionNode));
+        }
+    }
 }
 
 interface ActionEntry {
@@ -113,11 +254,13 @@ function collectOperations(
     mapNode: Node,
     mapPath: (string | number)[],
     out: ActionEntry[],
-    isTrigger: boolean
+    isTrigger: boolean,
+    findings: LintFinding[]
 ): void {
     if (mapNode.type !== 'object' || !mapNode.children) {
         return;
     }
+    const seen = new Set<string>();
     for (const prop of mapNode.children) {
         if (prop.type !== 'property' || !prop.children || prop.children.length < 2) {
             continue;
@@ -129,6 +272,22 @@ function collectOperations(
         }
         const name = String(keyNode.value);
         const path = [...mapPath, name];
+
+        // actionNameSyntax: Power Automate rejects whitespace in action keys.
+        if (/\s/.test(name)) {
+            findings.push(diag('actionNameSyntax', 'error',
+                `${isTrigger ? 'Trigger' : 'Action'} name '${name}' must not contain whitespace; use underscores.`,
+                path, keyNode));
+        }
+        // actionNameUnique: duplicate keys within the same map.
+        if (seen.has(name)) {
+            findings.push(diag('actionNameUnique', 'error',
+                `${isTrigger ? 'Trigger' : 'Action'} name '${name}' is duplicated within the same map.`,
+                path, keyNode));
+        } else {
+            seen.add(name);
+        }
+
         out.push({ name, isTrigger, node: valueNode, path, parentActions: mapNode });
 
         // Recurse into nested action containers: scope `actions`, condition
@@ -136,11 +295,11 @@ function collectOperations(
         // foreach `actions`.
         const nested = findNodeAtLocation(valueNode, ['actions']);
         if (nested?.type === 'object') {
-            collectOperations(nested, [...path, 'actions'], out, false);
+            collectOperations(nested, [...path, 'actions'], out, false, findings);
         }
         const elseActions = findNodeAtLocation(valueNode, ['else', 'actions']);
         if (elseActions?.type === 'object') {
-            collectOperations(elseActions, [...path, 'else', 'actions'], out, false);
+            collectOperations(elseActions, [...path, 'else', 'actions'], out, false, findings);
         }
         const cases = findNodeAtLocation(valueNode, ['cases']);
         if (cases?.type === 'object' && cases.children) {
@@ -151,13 +310,13 @@ function collectOperations(
                 const caseName = String(caseProp.children[0].value);
                 const caseActions = findNodeAtLocation(caseProp.children[1], ['actions']);
                 if (caseActions?.type === 'object') {
-                    collectOperations(caseActions, [...path, 'cases', caseName, 'actions'], out, false);
+                    collectOperations(caseActions, [...path, 'cases', caseName, 'actions'], out, false, findings);
                 }
             }
         }
         const defaultActions = findNodeAtLocation(valueNode, ['default', 'actions']);
         if (defaultActions?.type === 'object') {
-            collectOperations(defaultActions, [...path, 'default', 'actions'], out, false);
+            collectOperations(defaultActions, [...path, 'default', 'actions'], out, false, findings);
         }
     }
 }
@@ -194,6 +353,96 @@ function runRulesForAction(
                 out.push(diag('runAfterTarget', 'error',
                     `Action '${a.name}' runAfter references unknown sibling action '${target}'.`,
                     [...a.path, 'runAfter', target], prop));
+            }
+            // runAfterStatus: status array values must be valid.
+            const arr = prop.children[1];
+            if (arr?.type === 'array' && arr.children) {
+                for (const item of arr.children) {
+                    if (item.type !== 'string') { continue; }
+                    const v = String(item.value);
+                    if (v !== 'Succeeded' && v !== 'Failed' && v !== 'Skipped' && v !== 'TimedOut') {
+                        out.push(diag('runAfterStatus', 'error',
+                            `Action '${a.name}' has invalid runAfter status '${v}' (allowed: Succeeded, Failed, Skipped, TimedOut).`,
+                            [...a.path, 'runAfter', target], item));
+                    }
+                }
+            }
+        }
+    }
+
+    // Trigger-type required-field shape.
+    if (a.isTrigger) {
+        if (typeStr === 'Recurrence') {
+            const freq = findNodeAtLocation(a.node, ['recurrence', 'frequency']);
+            const interval = findNodeAtLocation(a.node, ['recurrence', 'interval']);
+            if (!freq || freq.type !== 'string') {
+                out.push(diag('triggerTypeShape', 'error',
+                    `Recurrence trigger '${a.name}' is missing recurrence.frequency.`,
+                    [...a.path, 'recurrence', 'frequency'], a.node));
+            }
+            if (!interval) {
+                out.push(diag('triggerTypeShape', 'error',
+                    `Recurrence trigger '${a.name}' is missing recurrence.interval.`,
+                    [...a.path, 'recurrence', 'interval'], a.node));
+            }
+        } else if (typeStr === 'Request') {
+            const inputs = findNodeAtLocation(a.node, ['inputs']);
+            if (!inputs || inputs.type !== 'object') {
+                out.push(diag('triggerTypeShape', 'error',
+                    `Request trigger '${a.name}' is missing an inputs object.`,
+                    [...a.path, 'inputs'], a.node));
+            }
+        } else if (/^openapiconnection/i.test(typeStr)) {
+            for (const field of ['apiId', 'connectionName', 'operationId']) {
+                const f = findNodeAtLocation(a.node, ['inputs', 'host', field]);
+                if (!f || f.type !== 'string') {
+                    out.push(diag('triggerTypeShape', 'error',
+                        `Trigger '${a.name}' (${typeStr}) is missing inputs.host.${field}.`,
+                        [...a.path, 'inputs', 'host', field], a.node));
+                }
+            }
+            const params = findNodeAtLocation(a.node, ['inputs', 'parameters']);
+            if (!params || params.type !== 'object') {
+                out.push(diag('triggerTypeShape', 'error',
+                    `Trigger '${a.name}' (${typeStr}) is missing inputs.parameters.`,
+                    [...a.path, 'inputs', 'parameters'], a.node));
+            }
+        }
+    } else if (/^openapiconnection/i.test(typeStr)) {
+        // connectorActionShape: required fields for OpenApiConnection actions.
+        for (const field of ['connectionName', 'operationId']) {
+            const f = findNodeAtLocation(a.node, ['inputs', 'host', field]);
+            if (!f || f.type !== 'string') {
+                out.push(diag('connectorActionShape', 'error',
+                    `Action '${a.name}' (${typeStr}) is missing inputs.host.${field}.`,
+                    [...a.path, 'inputs', 'host', field], a.node));
+            }
+        }
+        const params = findNodeAtLocation(a.node, ['inputs', 'parameters']);
+        if (!params || params.type !== 'object') {
+            out.push(diag('connectorActionShape', 'error',
+                `Action '${a.name}' (${typeStr}) is missing inputs.parameters.`,
+                [...a.path, 'inputs', 'parameters'], a.node));
+        }
+    }
+
+    // defaultActionName: default-style names hurt readability.
+    if (!a.isTrigger && DEFAULT_ACTION_NAME_RE.test(a.name)) {
+        out.push(diag('defaultActionName', 'warning',
+            `Action '${a.name}' uses a default name. Rename it to describe its purpose.`,
+            a.path, a.node));
+    }
+
+    // paginationMissing: list-style connector calls without pagination policy.
+    if (/^openapiconnection/i.test(typeStr)) {
+        const opIdNode = findNodeAtLocation(a.node, ['inputs', 'host', 'operationId']);
+        const opIdStr = opIdNode?.type === 'string' ? String(opIdNode.value) : '';
+        if (LIST_OPERATION_RE.test(opIdStr)) {
+            const pag = findNodeAtLocation(a.node, ['runtimeConfiguration', 'paginationPolicy']);
+            if (!pag) {
+                out.push(diag('paginationMissing', 'warning',
+                    `Action '${a.name}' calls a list-style operation '${opIdStr}' without a pagination policy. Large result sets may be truncated.`,
+                    [...a.path, 'runtimeConfiguration', 'paginationPolicy'], a.node));
             }
         }
     }
@@ -320,6 +569,12 @@ function scanExpressions(node: Node, path: (string | number)[], out: LintFinding
 
 const UNION_OLD_FIRST_RE = /union\s*\(\s*[^,)]*\b(old|previous|prev|existing)\b/i;
 const SPLIT_BARE_TRIGGER_RE = /split\s*\(\s*(triggerBody\(\)|item\(\))(\?\.|\.)[^,]*,/i;
+
+/** Default-style action names emitted by the Power Automate designer. */
+const DEFAULT_ACTION_NAME_RE = /^(Compose|HTTP|Apply_to_each|Condition|Switch|Scope|Initialize_variable|Set_variable|Increment_variable|Decrement_variable|Append_to_string_variable|Append_to_array_variable|Filter_array|Select|Parse_JSON|Create_HTML_table|Create_CSV_table|Send_an_HTTP_request_to_SharePoint|Get_items|Get_files|Send_an_email|Post_message|Do_until|Terminate)(_\d+)?$/;
+
+/** OperationIds that return list-style results and benefit from pagination. */
+const LIST_OPERATION_RE = /^(GetItems|GetFiles|ListRows|GetRows|GetAllItems|ListItems|ListFiles|GetTables|ListTables|ListFolder|ListRowsPresentInATable)$|^List[A-Z]/;
 
 function checkExpression(expr: string, node: Node, path: (string | number)[], out: LintFinding[]): void {
     if (UNION_OLD_FIRST_RE.test(expr)) {

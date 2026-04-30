@@ -19,7 +19,7 @@
       "properties": {
         "type": { "type": "string" },
         "kind": { "type": "string" },
-        "inputs": { "type": "object" },
+        "inputs": {},
         "runAfter": { "$ref": "#/$defs/runAfter" },
         "operationOptions": { "type": "string" },
         "actions": {
