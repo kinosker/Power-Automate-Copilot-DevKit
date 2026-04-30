@@ -3,11 +3,22 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
+import { DataverseClient, PreconditionFailedError } from '../pac/DataverseClient';
 import { AuthService } from '../pac/AuthService';
 import { assertGuid, assertSafeSolutionName } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { lintFlowFile } from '../validation/runLint';
+import {
+    clientDataEquals,
+    getManifestEntry,
+    pruneFlowBackups,
+    readBaseline,
+    readFlowManifest,
+    upsertManifestEntry,
+    writeBaseline,
+    writeRemoteBackup
+} from '../pac/FlowManifest';
+import { clearRemoteContent, stashRemoteContent } from './remoteContent';
 
 function cfg<T>(key: string, fallback: T): T {
     return vscode.workspace.getConfiguration('flowplugin').get<T>(key) ?? fallback;
@@ -37,7 +48,7 @@ function shouldAutoPublish(): boolean {
 }
 
 /** Locate the `<DisplayName>-<GUID>.json` file for the given flow inside the unpacked solution. */
-async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {    const dir = path.join(solutionFolder, 'Workflows');
+export async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {    const dir = path.join(solutionFolder, 'Workflows');
     const entries = await fs.readdir(dir).catch(() => [] as string[]);
     const guid = flow.WorkflowId?.toLowerCase();
     const display = flow.DisplayName?.toLowerCase();
@@ -204,6 +215,110 @@ export async function uploadFlow(
     }
 
     const label = flow.DisplayName || flow.Name || flow.WorkflowId!;
+
+    // ---- Safe-upload pipeline ----------------------------------------------
+    // Re-fetch the live workflow so we can:
+    //   * detect remote drift since the last download (manifest comparison),
+    //   * back up the *current* remote clientdata before we overwrite it,
+    //   * capture a fresh ETag for an If-Match conditional PATCH,
+    //   * decide whether to flip the flow off around the update.
+    const driftEnabled = cfg<boolean>('driftDetection', true);
+    let live: Awaited<ReturnType<typeof client.getWorkflow>> | undefined;
+    try {
+        live = await client.getWorkflow(flow.WorkflowId!, [
+            'workflowid', 'name', 'modifiedon', 'statecode', 'statuscode', 'clientdata'
+        ]);
+    } catch (e: any) {
+        output.appendLine(`[safe-upload] could not fetch live workflow: ${e.message ?? e}`);
+        if (driftEnabled) {
+            const pick = await vscode.window.showWarningMessage(
+                `Could not contact Dataverse to verify the flow before upload (${e.message ?? e}). Upload anyway?`,
+                { modal: true },
+                'Upload anyway'
+            );
+            if (pick !== 'Upload anyway') { return; }
+        }
+    }
+
+    // Drift check: compare the pristine baseline (server clientdata captured
+    // at download time) against the live cloud clientdata. Content-based, so
+    // benign server actions like publish or state toggles do NOT trigger a
+    // false drift prompt.
+    if (driftEnabled && live) {
+        const baseline = await readBaseline(root, solution.SolutionUniqueName, flow.WorkflowId!);
+        const noBaseline = baseline === undefined;
+        const drifted = !noBaseline && !clientDataEquals(baseline, live.clientdata);
+
+        if (drifted) {
+            const reason =
+                `Server modifiedon: ${live.modifiedon ?? '?'}\n` +
+                `The flow content differs from the version you downloaded.`;
+            const action = await promptDriftDecision(label, reason, live, flowFile, baseline);
+            if (action === 'abort') {
+                vscode.window.showInformationMessage(`Upload of '${label}' aborted.`);
+                return;
+            }
+            output.appendLine(`[safe-upload] proceeding despite drift on '${label}' (user chose force-overwrite).`);
+        } else if (noBaseline) {
+            const reason =
+                `No download baseline exists for this flow (was it added to the solution after the last download?).`;
+            const action = await promptDriftDecision(label, reason, live, flowFile, undefined);
+            if (action === 'abort') {
+                vscode.window.showInformationMessage(`Upload of '${label}' aborted.`);
+                return;
+            }
+            output.appendLine(`[safe-upload] proceeding without baseline on '${label}' (user chose force-overwrite).`);
+        } else {
+            output.appendLine(`[safe-upload] baseline matches live server copy; no drift on '${label}'.`);
+        }
+    }
+
+    // Backup of the live remote clientdata (always, regardless of drift) so
+    // users can roll back by re-uploading the file.
+    if (live?.clientdata) {
+        try {
+            const backupFile = await writeRemoteBackup(
+                root, solution.SolutionUniqueName, live.name ?? label, live.clientdata
+            );
+            output.appendLine(`[safe-upload] backup written: ${backupFile}`);
+            const retain = cfg<number>('backupRetention', 10);
+            const removed = await pruneFlowBackups(
+                root, solution.SolutionUniqueName, live.name ?? label, retain
+            );
+            if (removed > 0) {
+                output.appendLine(`[safe-upload] pruned ${removed} old backup(s) (retention=${retain}).`);
+            }
+        } catch (e: any) {
+            output.appendLine(`[safe-upload] backup failed (continuing): ${e.message ?? e}`);
+        }
+    }
+
+    // Dry-run gate: no network mutations beyond this point.
+    if (cfg<boolean>('dryRunUpload', false)) {
+        output.appendLine(`[safe-upload] dry-run: would PATCH ${text.length} bytes to flow ${flow.WorkflowId}.`);
+        vscode.window.showInformationMessage(
+            `Dry run: '${label}' validated and backed up. No upload was sent.`
+        );
+        return;
+    }
+
+    const deactivateBefore = cfg<boolean>('deactivateBeforeUpload', true);
+    const wasActive = live?.statecode === 1;
+    const wasSuspended = live?.statecode === 2;
+    let didDeactivate = false;
+
+    if (deactivateBefore && wasSuspended) {
+        const pick = await vscode.window.showWarningMessage(
+            `Flow '${label}' is currently Suspended. Deactivating it before upload may change its state. Continue without toggling state?`,
+            { modal: true },
+            'Continue without toggling',
+            'Abort'
+        );
+        if (pick !== 'Continue without toggling') {
+            return;
+        }
+    }
+
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -211,14 +326,99 @@ export async function uploadFlow(
             cancellable: false
         },
         async progress => {
+            // ETag for the conditional PATCH. Re-captured after our own
+            // state toggle so the toggle's bump doesn't trip a false 412.
+            let ifMatch = live?.etag;
+
+            if (deactivateBefore && wasActive) {
+                progress.report({ message: 'Deactivating…' });
+                await client.setWorkflowState(flow.WorkflowId!, 0, 1);
+                didDeactivate = true;
+                try {
+                    const refreshed = await client.getWorkflow(flow.WorkflowId!, [
+                        'workflowid', 'modifiedon', 'statecode', 'statuscode'
+                    ]);
+                    ifMatch = refreshed.etag ?? ifMatch;
+                } catch (e: any) {
+                    output.appendLine(
+                        `[safe-upload] could not refresh ETag after deactivation; falling back to '*': ${e.message ?? e}`
+                    );
+                    // Drop ETag rather than send a known-stale one.
+                    ifMatch = undefined;
+                }
+            }
+
             progress.report({ message: 'Updating definition…' });
-            await client.patchWorkflowClientData(flow.WorkflowId!, text);
-            if (shouldAutoPublish()) {
+            try {
+                await client.patchWorkflowClientData(flow.WorkflowId!, text, {
+                    ifMatch
+                });
+            } catch (e: any) {
+                // Rollback state on failure if we toggled it.
+                if (didDeactivate) {
+                    try {
+                        progress.report({ message: 'Restoring previous state…' });
+                        await client.setWorkflowState(flow.WorkflowId!, 1, 2);
+                        output.appendLine(`[safe-upload] reactivated '${label}' after PATCH failure.`);
+                    } catch (re: any) {
+                        output.appendLine(
+                            `[safe-upload] rollback failed; flow '${label}' may be left deactivated: ${re.message ?? re}`
+                        );
+                    }
+                }
+                if (e instanceof PreconditionFailedError) {
+                    throw new Error(
+                        `${e.message} Re-download the solution to capture the latest version, then retry.`
+                    );
+                }
+                throw e;
+            }
+
+            if (didDeactivate) {
+                progress.report({ message: 'Reactivating…' });
+                // Reactivation implicitly publishes; skip explicit PublishXml.
+                await client.setWorkflowState(flow.WorkflowId!, 1, 2);
+            } else if (shouldAutoPublish()) {
                 progress.report({ message: 'Publishing…' });
                 await client.publishWorkflow(flow.WorkflowId!);
             }
         }
     );
+
+    // Refresh manifest entry with the fresh server values so subsequent
+    // uploads don't see false-positive drift.
+    if (driftEnabled) {
+        try {
+            const after = await client.getWorkflow(flow.WorkflowId!, [
+                'workflowid', 'name', 'modifiedon', 'statecode', 'statuscode'
+            ]);
+            await upsertManifestEntry(
+                root,
+                solution.SolutionUniqueName,
+                { id: env.EnvironmentId, url: env.EnvironmentUrl },
+                {
+                    workflowid: flow.WorkflowId!,
+                    name: after.name,
+                    modifiedon: after.modifiedon,
+                    statecode: after.statecode,
+                    statuscode: after.statuscode,
+                    etag: after.etag
+                }
+            );
+        } catch (e: any) {
+            output.appendLine(`[safe-upload] manifest refresh failed (continuing): ${e.message ?? e}`);
+        }
+
+        // The server now holds what we just uploaded, so the local file IS
+        // the new pristine baseline. Writing it here means the next upload
+        // starts clean without requiring a re-download.
+        try {
+            await writeBaseline(root, solution.SolutionUniqueName, flow.WorkflowId!, text);
+            output.appendLine(`[safe-upload] baseline updated for '${label}'.`);
+        } catch (e: any) {
+            output.appendLine(`[safe-upload] baseline write failed (continuing): ${e.message ?? e}`);
+        }
+    }
 
     // Refresh the snapshot used by download.ts to detect "local changes since
     // last download". Without this, every post-upload download would prompt.
@@ -278,4 +478,79 @@ function extractConnectionKeys(text: string): string[] {
         resolved.add(typeof logical === 'string' && logical ? logical : key);
     }
     return [...resolved];
+}
+
+/**
+ * Modal prompt shown when the live workflow has drifted from the manifest
+ * baseline. Returns 'force' to overwrite, 'abort' to bail. The 'View Diff'
+ * button opens VS Code's diff view and then surfaces a *non-modal*
+ * notification with the final choice — using a modal there would block the
+ * editor and prevent the user from actually reading the diff.
+ */
+async function promptDriftDecision(
+    label: string,
+    reason: string,
+    live: { clientdata?: string; name?: string },
+    localFile: string,
+    baseline: string | undefined
+): Promise<'force' | 'abort'> {
+    const initial = await vscode.window.showWarningMessage(
+        `Flow '${label}' has changed on the server since you last downloaded it.\n\n${reason}\n\nUploading will overwrite remote changes.`,
+        { modal: true },
+        'View Diff',
+        'Force overwrite'
+    );
+    if (initial === 'Force overwrite') {
+        return 'force';
+    }
+    if (initial !== 'View Diff') {
+        return 'abort';
+    }
+
+    if (!live.clientdata) {
+        vscode.window.showWarningMessage('Remote clientdata is not available; cannot show diff.');
+        return 'abort';
+    }
+    // Pretty-print both sides so the diff is readable. Diff orientation:
+    //   Left  = pristine baseline (what we had at download time)
+    //   Right = live cloud clientdata (what's there now)
+    // i.e. the diff highlights *server-side* changes since download.
+    const livePretty = prettifyJson(live.clientdata);
+    const liveUri = stashRemoteContent(`live-${live.name ?? label}`, livePretty);
+    let baselineUri: vscode.Uri | undefined;
+    if (baseline !== undefined) {
+        baselineUri = stashRemoteContent(`baseline-${live.name ?? label}`, prettifyJson(baseline));
+    }
+    try {
+        await vscode.commands.executeCommand(
+            'vscode.diff',
+            baselineUri ?? vscode.Uri.file(localFile),
+            liveUri,
+            baselineUri
+                ? `Baseline ↔ Server: ${label}`
+                : `Local ↔ Server: ${label}`
+        );
+    } catch (e: any) {
+        vscode.window.showErrorMessage(`Could not open diff: ${e.message ?? e}`);
+        clearRemoteContent(liveUri);
+        if (baselineUri) { clearRemoteContent(baselineUri); }
+        return 'abort';
+    }
+
+    const followUp = await vscode.window.showWarningMessage(
+        `Reviewing diff for '${label}'. Choose an action when ready.`,
+        'Force overwrite',
+        'Cancel upload'
+    );
+    clearRemoteContent(liveUri);
+    if (baselineUri) { clearRemoteContent(baselineUri); }
+    return followUp === 'Force overwrite' ? 'force' : 'abort';
+}
+
+function prettifyJson(text: string): string {
+    try {
+        return JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+        return text;
+    }
 }

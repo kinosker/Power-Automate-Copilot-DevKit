@@ -13,6 +13,28 @@ export interface WorkflowRecord {
     statecode?: number;
     statuscode?: number;
     category?: number;
+    modifiedon?: string;
+    /** OData strong ETag captured from `@odata.etag`. Use as `If-Match` for optimistic concurrency. */
+    etag?: string;
+}
+
+export interface WorkflowSummary {
+    workflowid: string;
+    name?: string;
+    modifiedon?: string;
+    statecode?: number;
+    statuscode?: number;
+    etag?: string;
+    /** Populated only when `listSolutionWorkflows` is called with `{ includeClientdata: true }`. */
+    clientdata?: string;
+}
+
+/** Thrown when an `If-Match` ETag check fails (HTTP 412). Caller can branch on this. */
+export class PreconditionFailedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'PreconditionFailedError';
+    }
 }
 
 /**
@@ -41,32 +63,178 @@ export class DataverseClient {
         };
     }
 
-    /** Fetch select fields for a single workflow row. */
-    async getWorkflow(workflowId: string, select: (keyof WorkflowRecord)[] = ['workflowid', 'name', 'clientdata']): Promise<WorkflowRecord> {
+    /** Fetch select fields for a single workflow row. Always captures `@odata.etag`. */
+    async getWorkflow(
+        workflowId: string,
+        select: (keyof WorkflowRecord)[] = ['workflowid', 'name', 'modifiedon', 'statecode', 'statuscode']
+    ): Promise<WorkflowRecord> {
         const url = `${this.base}/workflows(${workflowId})?$select=${select.join(',')}`;
         const headers = await this.authHeaders();
         this.output.appendLine(`> GET ${redactUrl(url)}`);
         const res = await fetch(url, { method: 'GET', headers });
         await throwIfError(res, 'GET workflow');
-        return (await readJson(res)) as WorkflowRecord;
+        const body = (await readJson(res)) as Record<string, unknown>;
+        const rec: WorkflowRecord = {};
+        for (const k of [
+            'workflowid', 'name', 'clientdata', 'statecode', 'statuscode', 'category', 'modifiedon'
+        ] as const) {
+            if (k in body) {
+                (rec as Record<string, unknown>)[k] = body[k];
+            }
+        }
+        const etag = body['@odata.etag'];
+        if (typeof etag === 'string' && etag) {
+            rec.etag = etag;
+        }
+        return rec;
     }
 
-    /** PATCH the `clientdata` field on the given workflow. */
-    async patchWorkflowClientData(workflowId: string, clientdata: string): Promise<void> {
+    /**
+     * PATCH the `clientdata` field on the given workflow.
+     * - `ifMatch` defaults to `'*'` (asserts the row exists; refuses upsert).
+     * - Pass an ETag to enable optimistic concurrency. On a 412 the client
+     *   throws `PreconditionFailedError`.
+     */
+    async patchWorkflowClientData(
+        workflowId: string,
+        clientdata: string,
+        opts?: { ifMatch?: string }
+    ): Promise<void> {
         const url = `${this.base}/workflows(${workflowId})`;
+        const ifMatch = opts?.ifMatch ?? '*';
         const headers = {
             ...(await this.authHeaders()),
             'Content-Type': 'application/json',
-            // Idempotent update; refuses to create a new row if the id does not exist.
-            'If-Match': '*'
+            'If-Match': ifMatch
         };
-        this.output.appendLine(`> PATCH ${redactUrl(url)} (clientdata, ${clientdata.length} bytes)`);
+        this.output.appendLine(
+            `> PATCH ${redactUrl(url)} (clientdata, ${clientdata.length} bytes, If-Match: ${ifMatch === '*' ? '*' : 'etag'})`
+        );
         const res = await fetch(url, {
             method: 'PATCH',
             headers,
             body: JSON.stringify({ clientdata })
         });
+        if (res.status === 412) {
+            const text = await res.text().catch(() => '');
+            throw new PreconditionFailedError(
+                `The flow was modified on the server since it was last downloaded (HTTP 412). ${shortDataverseMessage(text)}`.trim()
+            );
+        }
         await throwIfError(res, 'PATCH workflow');
+    }
+
+    /**
+     * Set the `statecode`/`statuscode` pair on a workflow. Reactivating a
+     * workflow (statecode=1) implicitly publishes it.
+     */
+    async setWorkflowState(workflowId: string, statecode: number, statuscode: number): Promise<void> {
+        const url = `${this.base}/workflows(${workflowId})`;
+        const headers = {
+            ...(await this.authHeaders()),
+            'Content-Type': 'application/json',
+            'If-Match': '*'
+        };
+        this.output.appendLine(`> PATCH ${redactUrl(url)} (statecode=${statecode}, statuscode=${statuscode})`);
+        const res = await fetch(url, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ statecode, statuscode })
+        });
+        await throwIfError(res, 'PATCH workflow state');
+    }
+
+    /**
+     * List workflows that belong to the given solution by unique name.
+     *
+     * Workflows in Dataverse are tracked as *solution components*, not by a
+     * direct `_solutionid_value` link on the workflow row (the workflow's own
+     * `solutionid` typically points at the Active/default solution). So the
+     * correct lookup is:
+     *   1. Resolve the user solution by unique name → `solutionid`.
+     *   2. Query `solutioncomponents` filtered to that solution and
+     *      `componenttype eq 29` (= Workflow) → set of workflow GUIDs.
+     *   3. Fetch each workflow's metadata in parallel.
+     */
+    async listSolutionWorkflows(
+        solutionUniqueName: string,
+        opts?: { includeClientdata?: boolean }
+    ): Promise<WorkflowSummary[]> {
+        const escaped = solutionUniqueName.replace(/'/g, "''");
+
+        // Step 1: solution unique name → solutionid.
+        const solUrl =
+            `${this.base}/solutions?$select=solutionid&$filter=` +
+            encodeURIComponent(`uniquename eq '${escaped}'`);
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(solUrl)}`);
+        const solRes = await fetch(solUrl, { method: 'GET', headers });
+        await throwIfError(solRes, 'GET solution');
+        const solBody = (await readJson(solRes)) as { value?: { solutionid?: string }[] };
+        const solutionId = solBody.value?.[0]?.solutionid;
+        if (!solutionId) {
+            this.output.appendLine(`[workflows] solution '${solutionUniqueName}' not found.`);
+            return [];
+        }
+
+        // Step 2: solutioncomponents → workflow GUIDs (componenttype 29 = Workflow).
+        const compUrl =
+            `${this.base}/solutioncomponents?$select=objectid` +
+            `&$filter=${encodeURIComponent(`_solutionid_value eq ${solutionId} and componenttype eq 29`)}`;
+        this.output.appendLine(`> GET ${redactUrl(compUrl)}`);
+        const compRes = await fetch(compUrl, { method: 'GET', headers });
+        await throwIfError(compRes, 'GET solutioncomponents');
+        const compBody = (await readJson(compRes)) as { value?: { objectid?: string }[] };
+        const ids = (compBody.value ?? [])
+            .map(r => r.objectid)
+            .filter((x): x is string => typeof x === 'string' && x.length > 0);
+        if (ids.length === 0) {
+            this.output.appendLine(`[workflows] solution '${solutionUniqueName}' has no Workflow components.`);
+            return [];
+        }
+        this.output.appendLine(`[workflows] solution has ${ids.length} workflow component(s); fetching metadata.`);
+
+        // Step 3: fetch metadata for each workflow id. Parallel but bounded.
+        const summaries: WorkflowSummary[] = [];
+        const concurrency = 6;
+        let cursor = 0;
+        const select: (keyof WorkflowRecord)[] = [
+            'workflowid', 'name', 'modifiedon', 'statecode', 'statuscode'
+        ];
+        if (opts?.includeClientdata) {
+            select.push('clientdata');
+        }
+        const workers: Promise<void>[] = [];
+        for (let w = 0; w < concurrency; w++) {
+            workers.push((async () => {
+                while (true) {
+                    const i = cursor++;
+                    if (i >= ids.length) { return; }
+                    const id = ids[i];
+                    try {
+                        const rec = await this.getWorkflow(id, select);
+                        summaries.push({
+                            workflowid: rec.workflowid ?? id,
+                            name: rec.name,
+                            modifiedon: rec.modifiedon,
+                            statecode: rec.statecode,
+                            statuscode: rec.statuscode,
+                            etag: rec.etag,
+                            clientdata: rec.clientdata
+                        });
+                    } catch (e: any) {
+                        // Non-fatal: log and continue. The flow simply won't
+                        // get a manifest entry, which falls back to the
+                        // "no baseline" prompt the next time it's uploaded.
+                        this.output.appendLine(
+                            `[workflows] failed to fetch workflow ${id}: ${e.message ?? e}`
+                        );
+                    }
+                }
+            })());
+        }
+        await Promise.all(workers);
+        return summaries;
     }
 
     /**
@@ -143,6 +311,18 @@ async function readBoundedText(res: Response): Promise<string> {
         throw new Error('Dataverse response exceeded size limit.');
     }
     return text;
+}
+
+function shortDataverseMessage(text: string): string {
+    if (!text) { return ''; }
+    try {
+        const parsed = JSON.parse(text);
+        const inner = parsed?.error?.message;
+        if (typeof inner === 'string' && inner) {
+            return inner;
+        }
+    } catch { /* fall through */ }
+    return text.slice(0, 500);
 }
 
 async function throwIfError(res: Response, what: string): Promise<void> {

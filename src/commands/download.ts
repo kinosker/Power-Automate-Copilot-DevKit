@@ -4,6 +4,10 @@ import * as os from 'os';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { PacCli } from '../pac/PacCli';
+import { AuthService } from '../pac/AuthService';
+import { DataverseAuth } from '../pac/DataverseAuth';
+import { DataverseClient } from '../pac/DataverseClient';
+import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../pac/FlowManifest';
 import { assertSafeSolutionName } from '../pac/validation';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
 
@@ -72,7 +76,9 @@ async function folderExists(p: string): Promise<boolean> {
 export async function downloadSolution(
     pac: PacCli,
     solution: SolutionInfo,
-    state?: vscode.Memento
+    state?: vscode.Memento,
+    auth?: AuthService,
+    output?: vscode.OutputChannel
 ): Promise<void> {
     assertSafeSolutionName(solution.SolutionUniqueName);
     const root = workspaceRoot();
@@ -159,6 +165,58 @@ export async function downloadSolution(
     if (state) {
         const newHash = await hashFolder(targetFolder);
         await state.update(snapshotKey(solution.SolutionUniqueName), newHash);
+    }
+
+    // Capture per-flow metadata (workflowid, modifiedon, statecode, ETag) for
+    // safe-upload drift detection. Failure here is non-fatal: the upload path
+    // will simply skip the drift check.
+    const driftEnabled = cfg<boolean>('driftDetection', true);
+    if (driftEnabled && auth) {
+        const env = auth.getSelectedEnvironment();
+        if (env?.EnvironmentUrl) {
+            try {
+                const dvAuth = new DataverseAuth();
+                const out = output ?? vscode.window.createOutputChannel('Power Automate');
+                const client = new DataverseClient(env.EnvironmentUrl, dvAuth, out);
+                const flows = await client.listSolutionWorkflows(
+                    solution.SolutionUniqueName,
+                    { includeClientdata: true }
+                );
+                const manifest = buildFlowManifest(
+                    solution.SolutionUniqueName,
+                    { id: env.EnvironmentId, url: env.EnvironmentUrl },
+                    flows
+                );
+                await writeFlowManifest(root, manifest);
+
+                // Save the pristine baseline (raw server clientdata) so the
+                // upload path can do content-based drift detection without
+                // false positives from publish/state-toggle ETag bumps.
+                let baselined = 0;
+                for (const f of flows) {
+                    if (!f.workflowid || !f.clientdata) { continue; }
+                    try {
+                        await writeBaseline(root, solution.SolutionUniqueName, f.workflowid, f.clientdata);
+                        baselined++;
+                    } catch (be: any) {
+                        out.appendLine(
+                            `[baseline] failed to write baseline for ${f.workflowid}: ${be.message ?? be}`
+                        );
+                    }
+                }
+                out.appendLine(
+                    `[manifest] captured ${flows.length} flow(s) for '${solution.SolutionUniqueName}' (${baselined} baseline(s) written).`
+                );
+            } catch (e: any) {
+                const out = output ?? vscode.window.createOutputChannel('Power Automate');
+                out.appendLine(
+                    `[manifest] failed to capture per-flow metadata (drift detection disabled for this download): ${e.message ?? e}`
+                );
+                vscode.window.showWarningMessage(
+                    `Solution downloaded, but per-flow metadata capture failed. Remote-drift detection on upload will be unavailable until the next successful download. ${e.message ?? ''}`
+                );
+            }
+        }
     }
 
     vscode.window.showInformationMessage(`Solution unpacked to ${targetFolder}`);

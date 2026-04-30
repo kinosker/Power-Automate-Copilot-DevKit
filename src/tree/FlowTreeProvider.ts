@@ -4,6 +4,9 @@ import * as fs from 'fs/promises';
 import { PacCli } from '../pac/PacCli';
 import { AuthService, OrgInfo } from '../pac/AuthService';
 import { PinnedSolutionService } from '../pac/PinnedSolutionService';
+import { DataverseAuth } from '../pac/DataverseAuth';
+import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
+import { clientDataEquals, readBaseline, readFlowManifest } from '../pac/FlowManifest';
 
 export interface SolutionInfo {
     SolutionUniqueName: string;
@@ -28,6 +31,7 @@ type Node =
     | PickSolutionPlaceholderNode
     | DownloadPlaceholderNode
     | FlowNode
+    | FlowDiffActionNode
     | MessageNode;
 
 class EnvironmentNode extends vscode.TreeItem {
@@ -94,14 +98,58 @@ class DownloadPlaceholderNode extends vscode.TreeItem {
 
 class FlowNode extends vscode.TreeItem {
     readonly kind = 'flow' as const;
-    constructor(public readonly flow: FlowInfo, public readonly solution: SolutionInfo) {
+    constructor(
+        public readonly flow: FlowInfo,
+        public readonly solution: SolutionInfo,
+        drift?: 'changed' | 'unchanged' | 'unknown'
+    ) {
         super(
             flow.DisplayName || flow.Name || flow.WorkflowId || '(unnamed flow)',
-            vscode.TreeItemCollapsibleState.None
+            vscode.TreeItemCollapsibleState.Collapsed
         );
         this.contextValue = 'flow';
-        this.iconPath = new vscode.ThemeIcon('zap');
-        this.description = flow.State;
+        if (drift === 'changed') {
+            this.iconPath = new vscode.ThemeIcon(
+                'zap',
+                new vscode.ThemeColor('list.warningForeground')
+            );
+            const parts: string[] = [];
+            if (flow.State) { parts.push(flow.State); }
+            parts.push('● modified on server');
+            this.description = parts.join(' · ');
+            this.tooltip = `Server version differs from your last download. Expand to view diff.`;
+        } else {
+            this.iconPath = new vscode.ThemeIcon('zap');
+            this.description = flow.State;
+            if (drift === 'unchanged') {
+                this.tooltip = `In sync with server (last checked just now). Expand to view diff.`;
+            }
+        }
+    }
+}
+
+class FlowDiffActionNode extends vscode.TreeItem {
+    readonly kind = 'flowDiffAction' as const;
+    constructor(
+        public readonly flow: FlowInfo,
+        public readonly solution: SolutionInfo,
+        drift?: 'changed' | 'unchanged' | 'unknown'
+    ) {
+        const label = drift === 'changed'
+            ? 'View server changes'
+            : drift === 'unchanged'
+                ? 'Compare with server (in sync)'
+                : 'Compare with server';
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'flowDiffAction';
+        this.iconPath = new vscode.ThemeIcon(
+            drift === 'changed' ? 'diff-modified' : 'diff'
+        );
+        this.command = {
+            command: 'flowplugin.viewFlowDiff',
+            title: 'View server changes',
+            arguments: [{ flow, solution }]
+        };
     }
 }
 
@@ -121,13 +169,24 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     private readonly _onDidChange = new vscode.EventEmitter<Node | undefined>();
     readonly onDidChangeTreeData = this._onDidChange.event;
 
+    /**
+     * Per-solution drift cache built lazily during `getChildren`. Keyed by
+     * solution unique name → workflowid (lowercased) → drift status.
+     * `undefined` value means "network call still in flight". Cleared on `refresh()`.
+     */
+    private driftBySolution = new Map<string, Map<string, 'changed' | 'unchanged'>>();
+    private driftLoading = new Map<string, Promise<void>>();
+
     constructor(
         private readonly pac: PacCli,
         private readonly auth: AuthService,
-        private readonly pins: PinnedSolutionService
+        private readonly pins: PinnedSolutionService,
+        private readonly output?: vscode.OutputChannel
     ) {}
 
     refresh(): void {
+        this.driftBySolution.clear();
+        this.driftLoading.clear();
         this._onDidChange.fire(undefined);
     }
 
@@ -221,7 +280,23 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 if (flows.length === 0) {
                     return [new MessageNode('No flows in this solution.', 'info')];
                 }
-                return flows.map(f => new FlowNode(f, element.solution));
+                // Kick off drift detection in the background. When it
+                // resolves, fire a tree refresh so the badges appear.
+                void this.ensureDriftLoaded(element.solution.SolutionUniqueName);
+                const driftMap = this.driftBySolution.get(element.solution.SolutionUniqueName);
+                return flows.map(f => {
+                    const drift = driftMap && f.WorkflowId
+                        ? driftMap.get(f.WorkflowId.toLowerCase()) ?? 'unknown'
+                        : 'unknown';
+                    return new FlowNode(f, element.solution, drift);
+                });
+            }
+            if (element instanceof FlowNode) {
+                const driftMap = this.driftBySolution.get(element.solution.SolutionUniqueName);
+                const drift = driftMap && element.flow.WorkflowId
+                    ? driftMap.get(element.flow.WorkflowId.toLowerCase()) ?? 'unknown'
+                    : 'unknown';
+                return [new FlowDiffActionNode(element.flow, element.solution, drift)];
             }
             return [];
         } catch (e: any) {
@@ -282,5 +357,83 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
             flows.push({ DisplayName: display, Name: display, WorkflowId: id });
         }
         return flows.sort((a, b) => (a.DisplayName ?? '').localeCompare(b.DisplayName ?? ''));
+    }
+
+    /**
+     * Lazy, cached drift detection for the given solution. Compares each
+     * workflow's live `modifiedon`/ETag against the manifest baseline written
+     * at download time. Fires a tree refresh once the result is in.
+     *
+     * Network failures are swallowed: drift simply stays 'unknown' and the
+     * UI shows the neutral icon.
+     */
+    private async ensureDriftLoaded(solutionUniqueName: string): Promise<void> {
+        if (this.driftBySolution.has(solutionUniqueName)) { return; }
+        const inflight = this.driftLoading.get(solutionUniqueName);
+        if (inflight) { return inflight; }
+
+        const driftEnabled = vscode.workspace
+            .getConfiguration('flowplugin')
+            .get<boolean>('driftDetection') ?? true;
+        if (!driftEnabled) {
+            this.driftBySolution.set(solutionUniqueName, new Map());
+            return;
+        }
+
+        const env = this.auth.getSelectedEnvironment();
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        if (!env?.EnvironmentUrl || !ws) {
+            this.driftBySolution.set(solutionUniqueName, new Map());
+            return;
+        }
+
+        const promise = (async () => {
+            try {
+                const manifest = await readFlowManifest(ws.uri.fsPath, solutionUniqueName);
+                if (!manifest || Object.keys(manifest.flows).length === 0) {
+                    // No baseline; can't compute drift. Leave map empty.
+                    this.driftBySolution.set(solutionUniqueName, new Map());
+                    return;
+                }
+                const out = this.output ?? vscode.window.createOutputChannel('Power Automate');
+                const dvAuth = new DataverseAuth();
+                const client = new DataverseClient(env.EnvironmentUrl!, dvAuth, out);
+                // Pull live clientdata so drift status matches what the upload
+                // path would decide (content-based, not ETag/modifiedon).
+                const live: WorkflowSummary[] = await client.listSolutionWorkflows(
+                    solutionUniqueName,
+                    { includeClientdata: true }
+                );
+                const map = new Map<string, 'changed' | 'unchanged'>();
+                for (const w of live) {
+                    if (!w.workflowid) { continue; }
+                    const id = w.workflowid.toLowerCase();
+                    const baseline = await readBaseline(
+                        ws.uri.fsPath,
+                        solutionUniqueName,
+                        w.workflowid
+                    );
+                    if (baseline === undefined) {
+                        // No baseline on disk: treat as changed so the user
+                        // notices and can re-download.
+                        map.set(id, 'changed');
+                        continue;
+                    }
+                    map.set(id, clientDataEquals(baseline, w.clientdata) ? 'unchanged' : 'changed');
+                }
+                this.driftBySolution.set(solutionUniqueName, map);
+            } catch (e: any) {
+                this.output?.appendLine(
+                    `[tree-drift] failed for '${solutionUniqueName}': ${e.message ?? e}`
+                );
+                // Cache empty map so we don't retry on every redraw.
+                this.driftBySolution.set(solutionUniqueName, new Map());
+            } finally {
+                this.driftLoading.delete(solutionUniqueName);
+                this._onDidChange.fire(undefined);
+            }
+        })();
+        this.driftLoading.set(solutionUniqueName, promise);
+        return promise;
     }
 }

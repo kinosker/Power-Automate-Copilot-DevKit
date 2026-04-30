@@ -84,6 +84,11 @@
         "title": "Open Flow Definition"
       },
       {
+        "command": "flowplugin.viewFlowDiff",
+        "title": "Power Automate: Compare Flow with Server",
+        "icon": "$(diff)"
+      },
+      {
         "command": "flowplugin.validateFlow",
         "title": "Power Automate: Validate Flow Definition",
         "icon": "$(check)"
@@ -194,6 +199,27 @@
           "type": "boolean",
           "default": true,
           "description": "Before uploading a flow, query Dataverse to confirm each connection reference it uses is bound to an active connection in the target environment."
+        },
+        "flowplugin.driftDetection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Capture per-flow metadata (modifiedon, ETag) at download time and compare against the live server state before upload. Prompts on remote drift."
+        },
+        "flowplugin.deactivateBeforeUpload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Before patching the flow definition, deactivate the flow if it is currently Activated, then reactivate after the update succeeds. Avoids unintended trigger executions during the update window."
+        },
+        "flowplugin.backupRetention": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "Number of timestamped pre-upload backups to keep per flow under '.flowplugin/backups/'. 0 keeps everything."
+        },
+        "flowplugin.dryRunUpload": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, validate and back up the remote clientdata but do not send the PATCH. Useful for testing the safe-upload pipeline."
         }
       }
     },

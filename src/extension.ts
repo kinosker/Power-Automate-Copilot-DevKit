@@ -7,6 +7,8 @@ import { FlowTreeProvider, SolutionInfo, FlowInfo } from './tree/FlowTreeProvide
 import { downloadSolution } from './commands/download';
 import { uploadFlow } from './commands/uploadFlow';
 import { validateFlowCommand } from './commands/validateFlow';
+import { registerRemoteContentProvider } from './commands/remoteContent';
+import { openFlowDiff } from './commands/diffFlow';
 import { assertSafeSolutionName } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
@@ -19,7 +21,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const pac = new PacCli(output);
     const auth = new AuthService(pac, context.workspaceState);
     const pins = new PinnedSolutionService(context.workspaceState);
-    const tree = new FlowTreeProvider(pac, auth, pins);
+    const tree = new FlowTreeProvider(pac, auth, pins, output);
 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('flowplugin.tree', tree)
@@ -28,6 +30,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Diagnostics for flow validation; ensure cleanup on deactivate.
     context.subscriptions.push({ dispose: disposeDiagnosticCollection });
     void getDiagnosticCollection();
+
+    // Virtual document scheme used by the upload-time diff view.
+    registerRemoteContentProvider(context);
 
     // Re-lint flow JSON files automatically on save so Problems stay in sync.
     context.subscriptions.push(
@@ -136,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return;
         }
         try {
-            await downloadSolution(pac, target, context.workspaceState);
+            await downloadSolution(pac, target, context.workspaceState, auth, output);
             // Auto-pin on successful download so the workspace is locked to it.
             const env = auth.getSelectedEnvironment();
             if (env?.EnvironmentId) {
@@ -233,6 +238,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.window.showErrorMessage(`Upload flow failed: ${e.message ?? e}`);
         } finally {
             tree.refresh();
+        }
+    });
+
+    register('flowplugin.viewFlowDiff', async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+        if (!node?.flow || !node.solution) {
+            vscode.window.showErrorMessage('Run this command from a flow in the tree.');
+            return;
+        }
+        try {
+            await openFlowDiff(auth, node.flow, node.solution, output);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`View diff failed: ${e.message ?? e}`);
         }
     });
 
