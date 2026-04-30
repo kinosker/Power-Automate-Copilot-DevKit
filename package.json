@@ -18,7 +18,8 @@
     }
   },
   "activationEvents": [
-    "onView:flowplugin.tree"
+    "onView:flowplugin.tree",
+    "onLanguage:json"
   ],
   "contributes": {
     "viewsContainers": {
@@ -81,6 +82,11 @@
       {
         "command": "flowplugin.openFlowDefinition",
         "title": "Open Flow Definition"
+      },
+      {
+        "command": "flowplugin.validateFlow",
+        "title": "Power Automate: Validate Flow Definition",
+        "icon": "$(check)"
       }
     ],
     "menus": {
@@ -125,7 +131,20 @@
           "when": "view == flowplugin.tree && viewItem == flow"
         }
       ],
-      "explorer/context": []
+      "explorer/context": [
+        {
+          "command": "flowplugin.validateFlow",
+          "when": "resourceFilename =~ /\\.json$/ && resourcePath =~ /[\\\\/]Workflows[\\\\/]/",
+          "group": "flowplugin@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "flowplugin.validateFlow",
+          "when": "resourceFilename =~ /\\.json$/ && resourcePath =~ /[\\\\/]Workflows[\\\\/]/",
+          "group": "flowplugin@1"
+        }
+      ]
     },
     "configuration": {
       "title": "Power Automate Flow ALM",
@@ -160,6 +179,16 @@
           ],
           "default": "Unmanaged",
           "description": "Package type used by pac solution export/pack."
+        },
+        "flowplugin.lint.blockOnWarnings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat lint warnings as errors and block uploads when any are present."
+        },
+        "flowplugin.checkConnectionsBeforeUpload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Before uploading a flow, query Dataverse to confirm each connection reference it uses is bound to an active connection in the target environment."
         }
       }
     },
@@ -172,7 +201,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --main-fields=module,main",
     "watch": "npm run build -- --sourcemap --watch",
     "compile": "tsc -p ./ --noEmit",
     "package": "vsce package"
@@ -182,5 +211,8 @@
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   }
 }

@@ -6,8 +6,10 @@ import { AuthService, OrgInfo } from './pac/AuthService';
 import { FlowTreeProvider, SolutionInfo, FlowInfo } from './tree/FlowTreeProvider';
 import { downloadSolution } from './commands/download';
 import { uploadFlow } from './commands/uploadFlow';
+import { validateFlowCommand } from './commands/validateFlow';
 import { assertSafeSolutionName } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
+import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel('Power Automate');
@@ -21,6 +23,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('flowplugin.tree', tree)
     );
+
+    // Diagnostics for flow validation; ensure cleanup on deactivate.
+    context.subscriptions.push({ dispose: disposeDiagnosticCollection });
+    void getDiagnosticCollection();
 
     // Background pac presence check; non-blocking.
     void (async () => {
@@ -42,6 +48,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
     register('flowplugin.refresh', () => tree.refresh());
+
+    register('flowplugin.validateFlow', async (uriOrNode?: vscode.Uri | { resourceUri?: vscode.Uri }) => {
+        const uri = uriOrNode instanceof vscode.Uri
+            ? uriOrNode
+            : (uriOrNode && 'resourceUri' in uriOrNode ? uriOrNode.resourceUri : undefined);
+        await validateFlowCommand(uri);
+    });
 
     register('flowplugin.signIn', async () => {
         try {

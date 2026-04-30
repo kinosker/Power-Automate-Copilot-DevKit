@@ -69,6 +69,35 @@ export class DataverseClient {
         await throwIfError(res, 'PATCH workflow');
     }
 
+    /**
+     * List connection references in the environment. When `logicalNames` is
+     * provided, results are filtered to those names (case-insensitive).
+     * `connectionid` is empty/null when the reference is not bound to a real
+     * connection — i.e. the equivalent of FlowStudio's "missing connection".
+     */
+    async listConnectionReferences(
+        logicalNames?: string[]
+    ): Promise<{ logicalName: string; connectionId?: string; displayName?: string }[]> {
+        const select = '$select=connectionreferencelogicalname,connectionid,connectionreferencedisplayname';
+        let url = `${this.base}/connectionreferences?${select}`;
+        if (logicalNames && logicalNames.length > 0) {
+            const filter = logicalNames
+                .map(n => `connectionreferencelogicalname eq '${n.replace(/'/g, "''")}'`)
+                .join(' or ');
+            url += `&$filter=${encodeURIComponent(filter)}`;
+        }
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(url)}`);
+        const res = await fetch(url, { method: 'GET', headers });
+        await throwIfError(res, 'GET connectionreferences');
+        const json = (await readJson(res)) as { value?: any[] };
+        return (json.value ?? []).map(r => ({
+            logicalName: String(r.connectionreferencelogicalname ?? ''),
+            connectionId: r.connectionid ? String(r.connectionid) : undefined,
+            displayName: r.connectionreferencedisplayname ? String(r.connectionreferencedisplayname) : undefined
+        }));
+    }
+
     /** Publish a single workflow via the unbound `PublishXml` action. */
     async publishWorkflow(workflowId: string): Promise<void> {
         const url = `${this.base}/PublishXml`;

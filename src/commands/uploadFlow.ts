@@ -7,6 +7,7 @@ import { DataverseClient } from '../pac/DataverseClient';
 import { AuthService } from '../pac/AuthService';
 import { assertGuid, assertSafeSolutionName } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
+import { lintFlowFile } from '../validation/runLint';
 
 function cfg<T>(key: string, fallback: T): T {
     return vscode.workspace.getConfiguration('flowplugin').get<T>(key) ?? fallback;
@@ -36,8 +37,7 @@ function shouldAutoPublish(): boolean {
 }
 
 /** Locate the `<DisplayName>-<GUID>.json` file for the given flow inside the unpacked solution. */
-async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {
-    const dir = path.join(solutionFolder, 'Workflows');
+async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {    const dir = path.join(solutionFolder, 'Workflows');
     const entries = await fs.readdir(dir).catch(() => [] as string[]);
     const guid = flow.WorkflowId?.toLowerCase();
     const display = flow.DisplayName?.toLowerCase();
@@ -122,8 +122,62 @@ export async function uploadFlow(
         throw new Error(`Flow file is not valid JSON: ${e.message}`);
     }
 
+    // Run the linter (A2/A4) before any network call. Errors abort; warnings prompt.
+    const lint = await lintFlowFile(flowFile);
+    if (lint.errors > 0) {
+        const first = lint.findings.filter(f => f.severity === 'error').slice(0, 5)
+            .map(f => `• [${f.ruleId}] ${f.message}`).join('\n');
+        for (const f of lint.findings) {
+            output.appendLine(`[lint:${f.severity}] ${f.ruleId}: ${f.message} @ ${f.jsonPath.join('/')}`);
+        }
+        throw new Error(`Flow has ${lint.errors} validation error(s). Fix them before uploading.\n${first}`);
+    }
+    if (lint.warnings > 0) {
+        const blockOnWarnings = cfg<boolean>('lint.blockOnWarnings', false);
+        const first = lint.findings.filter(f => f.severity === 'warning').slice(0, 5)
+            .map(f => `• [${f.ruleId}] ${f.message}`).join('\n');
+        for (const f of lint.findings) {
+            output.appendLine(`[lint:${f.severity}] ${f.ruleId}: ${f.message} @ ${f.jsonPath.join('/')}`);
+        }
+        if (blockOnWarnings) {
+            throw new Error(`Flow has ${lint.warnings} warning(s) and 'flowplugin.lint.blockOnWarnings' is enabled.\n${first}`);
+        }
+        const pick = await vscode.window.showWarningMessage(
+            `Flow has ${lint.warnings} validation warning(s). Upload anyway?\n${first}`,
+            { modal: true },
+            'Upload anyway'
+        );
+        if (pick !== 'Upload anyway') {
+            return;
+        }
+    }
+
     const dvAuth = new DataverseAuth();
     const client = new DataverseClient(env.EnvironmentUrl, dvAuth, output);
+
+    // A4b: probe live connection bindings for any connectionName the flow uses.
+    if (cfg<boolean>('checkConnectionsBeforeUpload', true)) {
+        try {
+            const usedKeys = extractConnectionKeys(text);
+            if (usedKeys.length > 0) {
+                const refs = await client.listConnectionReferences(usedKeys);
+                const byName = new Map(refs.map(r => [r.logicalName.toLowerCase(), r]));
+                const missing = usedKeys.filter(k => !byName.get(k.toLowerCase())?.connectionId);
+                if (missing.length > 0) {
+                    const pick = await vscode.window.showWarningMessage(
+                        `These connection references are not bound to an active connection in this environment: ${missing.join(', ')}.\nUpload anyway?`,
+                        { modal: true },
+                        'Upload anyway'
+                    );
+                    if (pick !== 'Upload anyway') {
+                        return;
+                    }
+                }
+            }
+        } catch (e: any) {
+            output.appendLine(`[connections] live binding probe failed (continuing): ${e.message ?? e}`);
+        }
+    }
 
     const label = flow.DisplayName || flow.Name || flow.WorkflowId!;
     await vscode.window.withProgress(
@@ -150,4 +204,36 @@ export async function uploadFlow(
     }
 
     vscode.window.showInformationMessage(`Flow '${label}' uploaded.`);
+}
+
+/** Pull every distinct `inputs.host.connectionName` string out of a flow JSON document. */
+function extractConnectionKeys(text: string): string[] {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(text);
+    } catch {
+        return [];
+    }
+    const out = new Set<string>();
+    const walk = (n: unknown): void => {
+        if (!n || typeof n !== 'object') { return; }
+        if (Array.isArray(n)) {
+            for (const it of n) { walk(it); }
+            return;
+        }
+        const obj = n as Record<string, unknown>;
+        const inputs = obj['inputs'];
+        if (inputs && typeof inputs === 'object') {
+            const host = (inputs as Record<string, unknown>)['host'];
+            if (host && typeof host === 'object') {
+                const cn = (host as Record<string, unknown>)['connectionName'];
+                if (typeof cn === 'string' && cn) {
+                    out.add(cn);
+                }
+            }
+        }
+        for (const v of Object.values(obj)) { walk(v); }
+    };
+    walk(parsed);
+    return [...out];
 }

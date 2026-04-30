@@ -1,27 +1,70 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Power Automate / Logic Apps Workflow Definition",
+  "title": "Power Automate / Logic Apps Workflow Definition (unpacked solution shape)",
   "type": "object",
+  "$defs": {
+    "runAfter": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["Succeeded", "Failed", "Skipped", "TimedOut"]
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "kind": { "type": "string" },
+        "inputs": { "type": "object" },
+        "runAfter": { "$ref": "#/$defs/runAfter" },
+        "operationOptions": { "type": "string" },
+        "actions": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/operation" }
+        },
+        "else": { "type": "object" },
+        "cases": { "type": "object" },
+        "default": { "type": "object" },
+        "foreach": { "type": "string" },
+        "expression": {}
+      },
+      "additionalProperties": true
+    }
+  },
   "properties": {
     "properties": {
       "type": "object",
       "properties": {
         "definition": {
           "type": "object",
+          "required": ["$schema", "contentVersion", "triggers", "actions"],
           "properties": {
             "$schema": { "type": "string" },
             "contentVersion": { "type": "string" },
             "parameters": { "type": "object" },
-            "triggers": { "type": "object" },
-            "actions": { "type": "object" },
+            "triggers": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/operation" }
+            },
+            "actions": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/operation" }
+            },
             "outputs": { "type": "object" }
-          }
+          },
+          "additionalProperties": true
         },
         "connectionReferences": { "type": "object" }
-      }
+      },
+      "additionalProperties": true
     },
     "schemaName": { "type": "string" },
     "schemaVersion": { "type": "string" },
     "name": { "type": "string" }
-  }
+  },
+  "additionalProperties": true
 }
