@@ -89,6 +89,11 @@
         "icon": "$(diff)"
       },
       {
+        "command": "flowplugin.refreshFlow",
+        "title": "Power Automate: Pull Flow and Discard Local Changes",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "flowplugin.validateFlow",
         "title": "Power Automate: Validate Flow Definition",
         "icon": "$(check)"
@@ -139,6 +144,11 @@
         {
           "command": "flowplugin.openFlowDefinition",
           "when": "view == flowplugin.tree && viewItem == flow"
+        },
+        {
+          "command": "flowplugin.refreshFlow",
+          "when": "view == flowplugin.tree && viewItem == flow",
+          "group": "flowplugin@2"
         }
       ],
       "explorer/context": [

@@ -32,6 +32,7 @@ type Node =
     | DownloadPlaceholderNode
     | FlowNode
     | FlowDiffActionNode
+    | FlowRefreshActionNode
     | MessageNode;
 
 class EnvironmentNode extends vscode.TreeItem {
@@ -105,9 +106,13 @@ class FlowNode extends vscode.TreeItem {
     ) {
         super(
             flow.DisplayName || flow.Name || flow.WorkflowId || '(unnamed flow)',
-            vscode.TreeItemCollapsibleState.Collapsed
+            vscode.TreeItemCollapsibleState.Expanded
         );
         this.contextValue = 'flow';
+        // Color the lightning icon to reflect drift state at a glance:
+        //   * green  — local file matches what's on the server
+        //   * yellow — local and server differ (either side has changed)
+        //   * grey   — drift not yet computed (loading/unknown)
         if (drift === 'changed') {
             this.iconPath = new vscode.ThemeIcon(
                 'zap',
@@ -115,15 +120,23 @@ class FlowNode extends vscode.TreeItem {
             );
             const parts: string[] = [];
             if (flow.State) { parts.push(flow.State); }
-            parts.push('● modified on server');
+            parts.push('● out of sync');
             this.description = parts.join(' · ');
-            this.tooltip = `Server version differs from your last download. Expand to view diff.`;
-        } else {
-            this.iconPath = new vscode.ThemeIcon('zap');
+            this.tooltip = `Local file differs from the server copy. Expand to view diff or pull the server version.`;
+        } else if (drift === 'unchanged') {
+            this.iconPath = new vscode.ThemeIcon(
+                'zap',
+                new vscode.ThemeColor('testing.iconPassed')
+            );
             this.description = flow.State;
-            if (drift === 'unchanged') {
-                this.tooltip = `In sync with server (last checked just now). Expand to view diff.`;
-            }
+            this.tooltip = `Local file matches the server copy.`;
+        } else {
+            this.iconPath = new vscode.ThemeIcon(
+                'zap',
+                new vscode.ThemeColor('disabledForeground')
+            );
+            this.description = flow.State;
+            this.tooltip = `Checking server for changes…`;
         }
     }
 }
@@ -136,7 +149,7 @@ class FlowDiffActionNode extends vscode.TreeItem {
         drift?: 'changed' | 'unchanged' | 'unknown'
     ) {
         const label = drift === 'changed'
-            ? 'View server changes'
+            ? 'Compare with server (out of sync)'
             : drift === 'unchanged'
                 ? 'Compare with server (in sync)'
                 : 'Compare with server';
@@ -148,6 +161,24 @@ class FlowDiffActionNode extends vscode.TreeItem {
         this.command = {
             command: 'flowplugin.viewFlowDiff',
             title: 'View server changes',
+            arguments: [{ flow, solution }]
+        };
+    }
+}
+
+class FlowRefreshActionNode extends vscode.TreeItem {
+    readonly kind = 'flowRefreshAction' as const;
+    constructor(
+        public readonly flow: FlowInfo,
+        public readonly solution: SolutionInfo
+    ) {
+        super('Pull and discard local changes', vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'flowRefreshAction';
+        this.iconPath = new vscode.ThemeIcon('cloud-download');
+        this.tooltip = 'Pull the latest server copy and overwrite the local flow file. Local edits to this flow are discarded.';
+        this.command = {
+            command: 'flowplugin.refreshFlow',
+            title: 'Pull and discard local changes',
             arguments: [{ flow, solution }]
         };
     }
@@ -296,7 +327,10 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 const drift = driftMap && element.flow.WorkflowId
                     ? driftMap.get(element.flow.WorkflowId.toLowerCase()) ?? 'unknown'
                     : 'unknown';
-                return [new FlowDiffActionNode(element.flow, element.solution, drift)];
+                const children: vscode.TreeItem[] = [];
+                children.push(new FlowDiffActionNode(element.flow, element.solution, drift));
+                children.push(new FlowRefreshActionNode(element.flow, element.solution));
+                return children as Node[];
             }
             return [];
         } catch (e: any) {
@@ -361,8 +395,10 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
 
     /**
      * Lazy, cached drift detection for the given solution. Compares each
-     * workflow's live `modifiedon`/ETag against the manifest baseline written
-     * at download time. Fires a tree refresh once the result is in.
+     * workflow's live `clientdata` against the local file on disk so the
+     * tree's "in sync" indicator reflects the user's actual state — i.e.
+     * yellow if either the user edited locally OR the server changed since
+     * download. Fires a tree refresh once the result is in.
      *
      * Network failures are swallowed: drift simply stays 'unknown' and the
      * UI shows the neutral icon.
@@ -398,28 +434,43 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 const out = this.output ?? vscode.window.createOutputChannel('Power Automate');
                 const dvAuth = new DataverseAuth();
                 const client = new DataverseClient(env.EnvironmentUrl!, dvAuth, out);
-                // Pull live clientdata so drift status matches what the upload
-                // path would decide (content-based, not ETag/modifiedon).
                 const live: WorkflowSummary[] = await client.listSolutionWorkflows(
                     solutionUniqueName,
                     { includeClientdata: true }
                 );
+                const solutionsRoot = vscode.workspace
+                    .getConfiguration('flowplugin')
+                    .get<string>('solutionsRoot') || 'solutions';
+                const workflowsDir = path.join(
+                    ws.uri.fsPath, solutionsRoot, solutionUniqueName, 'Workflows'
+                );
+                const dirEntries = await fs.readdir(workflowsDir).catch(() => [] as string[]);
                 const map = new Map<string, 'changed' | 'unchanged'>();
                 for (const w of live) {
                     if (!w.workflowid) { continue; }
                     const id = w.workflowid.toLowerCase();
-                    const baseline = await readBaseline(
-                        ws.uri.fsPath,
-                        solutionUniqueName,
-                        w.workflowid
+                    // Locate the local file by GUID suffix.
+                    const filename = dirEntries.find(
+                        f => f.toLowerCase().endsWith(`-${id}.json`)
                     );
-                    if (baseline === undefined) {
-                        // No baseline on disk: treat as changed so the user
-                        // notices and can re-download.
+                    if (!filename) {
+                        // No local file: drift is meaningless here.
                         map.set(id, 'changed');
                         continue;
                     }
-                    map.set(id, clientDataEquals(baseline, w.clientdata) ? 'unchanged' : 'changed');
+                    let localText: string;
+                    try {
+                        localText = await fs.readFile(
+                            path.join(workflowsDir, filename), 'utf8'
+                        );
+                    } catch {
+                        map.set(id, 'changed');
+                        continue;
+                    }
+                    map.set(
+                        id,
+                        clientDataEquals(localText, w.clientdata) ? 'unchanged' : 'changed'
+                    );
                 }
                 this.driftBySolution.set(solutionUniqueName, map);
             } catch (e: any) {

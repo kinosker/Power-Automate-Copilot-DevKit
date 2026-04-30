@@ -9,6 +9,7 @@ import { uploadFlow } from './commands/uploadFlow';
 import { validateFlowCommand } from './commands/validateFlow';
 import { registerRemoteContentProvider } from './commands/remoteContent';
 import { openFlowDiff } from './commands/diffFlow';
+import { refreshFlowFromServer } from './commands/refreshFlow';
 import { assertSafeSolutionName } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
@@ -250,6 +251,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await openFlowDiff(auth, node.flow, node.solution, output);
         } catch (e: any) {
             vscode.window.showErrorMessage(`View diff failed: ${e.message ?? e}`);
+        }
+    });
+
+    register('flowplugin.refreshFlow', async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+        if (!node?.flow || !node.solution) {
+            vscode.window.showErrorMessage('Run this command from a flow in the tree.');
+            return;
+        }
+        const label = node.flow.DisplayName || node.flow.Name || node.flow.WorkflowId || 'flow';
+        const pick = await vscode.window.showWarningMessage(
+            `Pull '${label}' from the server? Local changes to this flow will be discarded.`,
+            { modal: true },
+            'Pull and discard local changes'
+        );
+        if (pick !== 'Pull and discard local changes') { return; }
+        try {
+            await refreshFlowFromServer(auth, node.flow, node.solution, output);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Refresh flow failed: ${e.message ?? e}`);
+        } finally {
+            tree.refresh();
         }
     });
 

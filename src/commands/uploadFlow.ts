@@ -19,6 +19,7 @@ import {
     writeRemoteBackup
 } from '../pac/FlowManifest';
 import { clearRemoteContent, stashRemoteContent } from './remoteContent';
+import { refreshFlowFromServer } from './refreshFlow';
 
 function cfg<T>(key: string, fallback: T): T {
     return vscode.workspace.getConfiguration('flowplugin').get<T>(key) ?? fallback;
@@ -258,7 +259,12 @@ export async function uploadFlow(
                 vscode.window.showInformationMessage(`Upload of '${label}' aborted.`);
                 return;
             }
-            output.appendLine(`[safe-upload] proceeding despite drift on '${label}' (user chose force-overwrite).`);
+            if (action === 'redownload') {
+                output.appendLine(`[safe-upload] user chose to pull '${label}' from server instead of uploading.`);
+                await refreshFlowFromServer(auth, flow, solution, output);
+                return;
+            }
+            output.appendLine(`[safe-upload] proceeding despite drift on '${label}' (user chose to upload local version).`);
         } else if (noBaseline) {
             const reason =
                 `No download baseline exists for this flow (was it added to the solution after the last download?).`;
@@ -267,7 +273,12 @@ export async function uploadFlow(
                 vscode.window.showInformationMessage(`Upload of '${label}' aborted.`);
                 return;
             }
-            output.appendLine(`[safe-upload] proceeding without baseline on '${label}' (user chose force-overwrite).`);
+            if (action === 'redownload') {
+                output.appendLine(`[safe-upload] user chose to pull '${label}' from server instead of uploading.`);
+                await refreshFlowFromServer(auth, flow, solution, output);
+                return;
+            }
+            output.appendLine(`[safe-upload] proceeding without baseline on '${label}' (user chose to upload local version).`);
         } else {
             output.appendLine(`[safe-upload] baseline matches live server copy; no drift on '${label}'.`);
         }
@@ -311,8 +322,7 @@ export async function uploadFlow(
         const pick = await vscode.window.showWarningMessage(
             `Flow '${label}' is currently Suspended. Deactivating it before upload may change its state. Continue without toggling state?`,
             { modal: true },
-            'Continue without toggling',
-            'Abort'
+            'Continue without toggling'
         );
         if (pick !== 'Continue without toggling') {
             return;
@@ -481,11 +491,16 @@ function extractConnectionKeys(text: string): string[] {
 }
 
 /**
- * Modal prompt shown when the live workflow has drifted from the manifest
- * baseline. Returns 'force' to overwrite, 'abort' to bail. The 'View Diff'
- * button opens VS Code's diff view and then surfaces a *non-modal*
- * notification with the final choice — using a modal there would block the
- * editor and prevent the user from actually reading the diff.
+ * Modal prompt shown when the live workflow has drifted from the baseline.
+ * Returns one of:
+ *   - 'force'      : caller proceeds with the upload (local replaces server).
+ *   - 'redownload' : caller skips the upload and triggers a re-download
+ *                    (server replaces local; local edits are discarded).
+ *   - 'abort'      : caller does nothing (default Cancel).
+ *
+ * The 'View Diff' button opens VS Code's diff view and then surfaces a
+ * *non-modal* notification with the final choice — using a modal there would
+ * block the editor and prevent the user from actually reading the diff.
  */
 async function promptDriftDecision(
     label: string,
@@ -493,19 +508,17 @@ async function promptDriftDecision(
     live: { clientdata?: string; name?: string },
     localFile: string,
     baseline: string | undefined
-): Promise<'force' | 'abort'> {
+): Promise<'force' | 'redownload' | 'abort'> {
     const initial = await vscode.window.showWarningMessage(
-        `Flow '${label}' has changed on the server since you last downloaded it.\n\n${reason}\n\nUploading will overwrite remote changes.`,
+        `Flow '${label}' has changed on the server since you last downloaded it.\n\n${reason}`,
         { modal: true },
         'View Diff',
-        'Force overwrite'
+        'Upload my version',
+        'Pull and discard local changes'
     );
-    if (initial === 'Force overwrite') {
-        return 'force';
-    }
-    if (initial !== 'View Diff') {
-        return 'abort';
-    }
+    if (initial === 'Upload my version') { return 'force'; }
+    if (initial === 'Pull and discard local changes') { return 'redownload'; }
+    if (initial !== 'View Diff') { return 'abort'; }
 
     if (!live.clientdata) {
         vscode.window.showWarningMessage('Remote clientdata is not available; cannot show diff.');
@@ -537,14 +550,18 @@ async function promptDriftDecision(
         return 'abort';
     }
 
+    // Non-modal so the diff editor stays interactive while the user decides.
     const followUp = await vscode.window.showWarningMessage(
         `Reviewing diff for '${label}'. Choose an action when ready.`,
-        'Force overwrite',
+        'Upload my version',
+        'Pull and discard local changes',
         'Cancel upload'
     );
     clearRemoteContent(liveUri);
     if (baselineUri) { clearRemoteContent(baselineUri); }
-    return followUp === 'Force overwrite' ? 'force' : 'abort';
+    if (followUp === 'Upload my version') { return 'force'; }
+    if (followUp === 'Pull and discard local changes') { return 'redownload'; }
+    return 'abort';
 }
 
 function prettifyJson(text: string): string {

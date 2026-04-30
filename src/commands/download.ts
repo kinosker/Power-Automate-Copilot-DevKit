@@ -95,8 +95,7 @@ export async function downloadSolution(
             const pick = await vscode.window.showWarningMessage(
                 `'${solution.SolutionUniqueName}' has local changes since the last download. Re-downloading will discard them.`,
                 { modal: true },
-                'Proceed and discard',
-                'Cancel'
+                'Proceed and discard'
             );
             if (pick !== 'Proceed and discard') {
                 return;
@@ -105,8 +104,7 @@ export async function downloadSolution(
             const pick = await vscode.window.showWarningMessage(
                 `'${solution.SolutionUniqueName}' already exists locally but has no recorded snapshot. Re-downloading may overwrite local changes.`,
                 { modal: true },
-                'Proceed and overwrite',
-                'Cancel'
+                'Proceed and overwrite'
             );
             if (pick !== 'Proceed and overwrite') {
                 return;
