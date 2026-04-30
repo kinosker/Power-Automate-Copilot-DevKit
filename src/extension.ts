@@ -71,6 +71,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await validateFlowCommand(uri);
     });
 
+    register('flowplugin.installSkill', async () => {
+        try {
+            await installFlowSkill(context, output);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Install Flow Skill failed: ${e.message ?? e}`);
+        }
+    });
+
     register('flowplugin.signIn', async () => {
         try {
             await auth.signIn();
@@ -293,4 +301,105 @@ async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | un
 
 export function deactivate(): void {
     /* no-op */
+}
+
+/**
+ * Copies the bundled Copilot skill files (`resources/skill/.github/...`)
+ * into the user's workspace `.github/` folder. Prompts before overwriting
+ * any existing file. Skips silently when no workspace is open.
+ */
+async function installFlowSkill(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel
+): Promise<void> {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) {
+        vscode.window.showErrorMessage('Open a workspace folder before installing the Flow Skill.');
+        return;
+    }
+    const sourceRoot = vscode.Uri.joinPath(context.extensionUri, 'resources', 'skill');
+    const targetRoot = ws.uri;
+
+    // Discover bundled files relative to the source root.
+    const relFiles = await listFilesRecursive(sourceRoot);
+    if (relFiles.length === 0) {
+        vscode.window.showWarningMessage('No skill files were bundled with this extension.');
+        return;
+    }
+
+    // Detect conflicts.
+    const conflicts: string[] = [];
+    for (const rel of relFiles) {
+        const dst = vscode.Uri.joinPath(targetRoot, ...rel);
+        try {
+            await vscode.workspace.fs.stat(dst);
+            conflicts.push(rel.join('/'));
+        } catch {
+            /* not present — no conflict */
+        }
+    }
+
+    let overwrite = false;
+    if (conflicts.length > 0) {
+        const preview = conflicts.slice(0, 5).join(', ') + (conflicts.length > 5 ? ', …' : '');
+        const pick = await vscode.window.showWarningMessage(
+            `${conflicts.length} skill file(s) already exist in this workspace (${preview}). Overwrite?`,
+            { modal: true },
+            'Overwrite',
+            'Skip existing'
+        );
+        if (!pick) {
+            return;
+        }
+        overwrite = pick === 'Overwrite';
+    }
+
+    let written = 0;
+    let skipped = 0;
+    for (const rel of relFiles) {
+        const src = vscode.Uri.joinPath(sourceRoot, ...rel);
+        const dst = vscode.Uri.joinPath(targetRoot, ...rel);
+        let exists = false;
+        try {
+            await vscode.workspace.fs.stat(dst);
+            exists = true;
+        } catch {
+            /* missing */
+        }
+        if (exists && !overwrite) {
+            skipped++;
+            continue;
+        }
+        const data = await vscode.workspace.fs.readFile(src);
+        await vscode.workspace.fs.writeFile(dst, data);
+        written++;
+        output.appendLine(`[install-skill] wrote ${rel.join('/')}`);
+    }
+
+    vscode.window.showInformationMessage(
+        `Flow Skill installed: ${written} file(s) written${skipped ? `, ${skipped} skipped` : ''}.`
+    );
+}
+
+/** Recursively enumerate files under `root`, returned as path segments relative to `root`. */
+async function listFilesRecursive(root: vscode.Uri): Promise<string[][]> {
+    const out: string[][] = [];
+    async function walk(dir: vscode.Uri, rel: string[]): Promise<void> {
+        let entries: [string, vscode.FileType][];
+        try {
+            entries = await vscode.workspace.fs.readDirectory(dir);
+        } catch {
+            return;
+        }
+        for (const [name, kind] of entries) {
+            const next = vscode.Uri.joinPath(dir, name);
+            if (kind === vscode.FileType.Directory) {
+                await walk(next, [...rel, name]);
+            } else if (kind === vscode.FileType.File) {
+                out.push([...rel, name]);
+            }
+        }
+    }
+    await walk(root, []);
+    return out;
 }

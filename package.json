@@ -87,6 +87,11 @@
         "command": "flowplugin.validateFlow",
         "title": "Power Automate: Validate Flow Definition",
         "icon": "$(check)"
+      },
+      {
+        "command": "flowplugin.installSkill",
+        "title": "Power Automate: Install Flow Skill into Workspace",
+        "icon": "$(book)"
       }
     ],
     "menus": {
