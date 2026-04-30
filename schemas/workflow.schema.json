@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Power Automate / Logic Apps Workflow Definition",
+  "type": "object",
+  "properties": {
+    "properties": {
+      "type": "object",
+      "properties": {
+        "definition": {
+          "type": "object",
+          "properties": {
+            "$schema": { "type": "string" },
+            "contentVersion": { "type": "string" },
+            "parameters": { "type": "object" },
+            "triggers": { "type": "object" },
+            "actions": { "type": "object" },
+            "outputs": { "type": "object" }
+          }
+        },
+        "connectionReferences": { "type": "object" }
+      }
+    },
+    "schemaName": { "type": "string" },
+    "schemaVersion": { "type": "string" },
+    "name": { "type": "string" }
+  }
+}

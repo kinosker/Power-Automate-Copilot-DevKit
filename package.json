@@ -1,0 +1,186 @@
+{
+  "name": "flowplugin",
+  "displayName": "Power Automate Flow ALM",
+  "description": "Download, edit, and re-upload Power Automate cloud flows as unpacked solutions, powered by the Microsoft Power Platform CLI (pac).",
+  "version": "0.1.0",
+  "publisher": "flowplugin",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In untrusted workspaces, the workspace-scoped 'flowplugin.pacPath' setting is ignored; the user/global value is used instead."
+    }
+  },
+  "activationEvents": [
+    "onView:flowplugin.tree"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "flowplugin",
+          "title": "Power Automate",
+          "icon": "$(zap)"
+        }
+      ]
+    },
+    "views": {
+      "flowplugin": [
+        {
+          "id": "flowplugin.tree",
+          "name": "Flows",
+          "icon": "$(zap)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "flowplugin.signIn",
+        "title": "Power Automate: Sign In",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "flowplugin.signOut",
+        "title": "Power Automate: Sign Out"
+      },
+      {
+        "command": "flowplugin.selectEnvironment",
+        "title": "Power Automate: Select Environment"
+      },
+      {
+        "command": "flowplugin.refresh",
+        "title": "Power Automate: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "flowplugin.downloadSolution",
+        "title": "Download Solution (Export + Unpack)",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "flowplugin.pickSolution",
+        "title": "Power Automate: Select Solution",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "flowplugin.unpinSolution",
+        "title": "Power Automate: Unpin Solution",
+        "icon": "$(unlock)"
+      },
+      {
+        "command": "flowplugin.uploadFlow",
+        "title": "Upload Flow",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "flowplugin.openFlowDefinition",
+        "title": "Open Flow Definition"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "flowplugin.signIn",
+          "when": "view == flowplugin.tree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "flowplugin.refresh",
+          "when": "view == flowplugin.tree",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "flowplugin.selectEnvironment",
+          "when": "view == flowplugin.tree && viewItem == environment",
+          "group": "inline"
+        },
+        {
+          "command": "flowplugin.downloadSolution",
+          "when": "view == flowplugin.tree && viewItem == pinnedSolution",
+          "group": "inline"
+        },
+        {
+          "command": "flowplugin.downloadSolution",
+          "when": "view == flowplugin.tree && viewItem == pinnedSolution"
+        },
+        {
+          "command": "flowplugin.uploadFlow",
+          "when": "view == flowplugin.tree && viewItem == flow",
+          "group": "inline"
+        },
+        {
+          "command": "flowplugin.uploadFlow",
+          "when": "view == flowplugin.tree && viewItem == flow"
+        },
+        {
+          "command": "flowplugin.openFlowDefinition",
+          "when": "view == flowplugin.tree && viewItem == flow"
+        }
+      ],
+      "explorer/context": []
+    },
+    "configuration": {
+      "title": "Power Automate Flow ALM",
+      "properties": {
+        "flowplugin.pacPath": {
+          "type": "string",
+          "default": "pac",
+          "description": "Path to the Microsoft Power Platform CLI executable."
+        },
+        "flowplugin.solutionsRoot": {
+          "type": "string",
+          "default": "solutions",
+          "description": "Workspace-relative folder where downloaded solutions are unpacked."
+        },
+        "flowplugin.autoPublishOnUpload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Publish the flow immediately after a successful upload."
+        },
+        "flowplugin.autoPublishOnImport": {
+          "type": "boolean",
+          "default": true,
+          "description": "Deprecated. Use 'flowplugin.autoPublishOnUpload'. Read for backward compatibility only.",
+          "deprecationMessage": "Use 'flowplugin.autoPublishOnUpload' instead."
+        },
+        "flowplugin.packageType": {
+          "type": "string",
+          "enum": [
+            "Unmanaged",
+            "Managed",
+            "Both"
+          ],
+          "default": "Unmanaged",
+          "description": "Package type used by pac solution export/pack."
+        }
+      }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "**/Workflows/*.json",
+        "url": "./schemas/workflow.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "npm run build -- --sourcemap --watch",
+    "compile": "tsc -p ./ --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
+  }
+}
