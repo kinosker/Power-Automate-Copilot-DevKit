@@ -221,6 +221,24 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         this._onDidChange.fire(undefined);
     }
 
+    /**
+     * Invalidate cached drift for a single solution (or all solutions) and
+     * trigger a tree redraw. The drift will be recomputed lazily next time
+     * the user expands the solution. Called by file-watcher hooks so local
+     * edits show up as drift without forcing the user to hit the refresh
+     * button.
+     */
+    invalidateDrift(solutionUniqueName?: string): void {
+        if (solutionUniqueName) {
+            this.driftBySolution.delete(solutionUniqueName);
+            this.driftLoading.delete(solutionUniqueName);
+        } else {
+            this.driftBySolution.clear();
+            this.driftLoading.clear();
+        }
+        this._onDidChange.fire(undefined);
+    }
+
     getTreeItem(element: Node): vscode.TreeItem {
         return element;
     }

@@ -49,6 +49,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         })
     );
 
+    // Watch local workflow files so the tree's drift indicator updates the
+    // moment the user edits/saves a flow JSON. Without this the cached
+    // 'unchanged' status sticks until the user hits the tree refresh button.
+    const flowsRoot = vscode.workspace
+        .getConfiguration('flowplugin')
+        .get<string>('solutionsRoot') || 'solutions';
+    const flowWatcher = vscode.workspace.createFileSystemWatcher(
+        `**/${flowsRoot}/*/Workflows/*.json`
+    );
+    const invalidateFromUri = (uri: vscode.Uri) => {
+        // Path layout: <root>/<flowsRoot>/<solutionUniqueName>/Workflows/<file>.json
+        const parts = uri.fsPath.split(/[\\/]+/);
+        const wfIdx = parts.lastIndexOf('Workflows');
+        if (wfIdx > 0) {
+            const sol = parts[wfIdx - 1];
+            tree.invalidateDrift(sol);
+        }
+    };
+    flowWatcher.onDidChange(invalidateFromUri);
+    flowWatcher.onDidCreate(invalidateFromUri);
+    flowWatcher.onDidDelete(invalidateFromUri);
+    context.subscriptions.push(flowWatcher);
+
     // Background pac presence check; non-blocking.
     void (async () => {
         const ok = await pac.checkInstalled();
