@@ -249,12 +249,41 @@ export class DataverseClient {
      * provided, results are filtered to those names (case-insensitive).
      * `connectionid` is empty/null when the reference is not bound to a real
      * connection — i.e. the equivalent of FlowStudio's "missing connection".
+     *
+     * `opts.ownerUserId` restricts to references whose Dataverse owner is the
+     * given systemuser GUID. Combine with the row-level access check to find
+     * references that are *usable* by that user (owned or shared).
+     *
+     * `opts.includeOwner` selects `_ownerid_value` so callers can post-filter
+     * (e.g. partition into owned vs shared-with-me).
+     *
+     * `opts.usableOnly` restricts to references that are actually usable by a
+     * flow: `connectionid` is populated (bound to a real connection) AND the
+     * row is Active (`statecode eq 0`). This is what the listing tool wants
+     * — callers binding connections at upload time should leave this off so
+     * unbound rows are still discoverable.
      */
     async listConnectionReferences(
-        logicalNames?: string[]
-    ): Promise<{ logicalName: string; connectionId?: string; displayName?: string }[]> {
-        const select = '$select=connectionreferencelogicalname,connectionid,connectionreferencedisplayname';
+        logicalNames?: string[],
+        opts?: { ownerUserId?: string; includeOwner?: boolean; usableOnly?: boolean }
+    ): Promise<{ logicalName: string; connectionId?: string; displayName?: string; ownerId?: string }[]> {
+        // Minimal projection. `connectionid` is only needed when the caller
+        // might care about unbound rows; with `usableOnly` it's redundant
+        // (filter already asserts it's non-null), so we drop it.
+        const selectFields = ['connectionreferencelogicalname', 'connectionreferencedisplayname'];
+        if (!opts?.usableOnly) {
+            selectFields.push('connectionid');
+        }
+        if (opts?.includeOwner || opts?.ownerUserId) {
+            selectFields.push('_ownerid_value');
+        }
+        const select = `$select=${selectFields.join(',')}`;
         let url = `${this.base}/connectionreferences?${select}`;
+        const filters: string[] = [];
+        if (opts?.usableOnly) {
+            filters.push('connectionid ne null');
+            filters.push('statecode eq 0');
+        }
         if (logicalNames && logicalNames.length > 0) {
             // Defense-in-depth: drop any name that isn't a valid Dataverse
             // logical-name token before interpolating into the OData filter.
@@ -263,10 +292,17 @@ export class DataverseClient {
                 this.output.appendLine('[connectionreferences] no valid logical names to query.');
                 return [];
             }
-            const filter = safeNames
+            const namesFilter = safeNames
                 .map(n => `connectionreferencelogicalname eq '${n.replace(/'/g, "''")}'`)
                 .join(' or ');
-            url += `&$filter=${encodeURIComponent(filter)}`;
+            filters.push(`(${namesFilter})`);
+        }
+        if (opts?.ownerUserId) {
+            assertGuid(opts.ownerUserId, 'ownerUserId');
+            filters.push(`_ownerid_value eq ${opts.ownerUserId}`);
+        }
+        if (filters.length > 0) {
+            url += `&$filter=${encodeURIComponent(filters.join(' and '))}`;
         }
         const headers = await this.authHeaders();
         this.output.appendLine(`> GET ${redactUrl(url)}`);
@@ -276,8 +312,31 @@ export class DataverseClient {
         return (json.value ?? []).map(r => ({
             logicalName: String(r.connectionreferencelogicalname ?? ''),
             connectionId: r.connectionid ? String(r.connectionid) : undefined,
-            displayName: r.connectionreferencedisplayname ? String(r.connectionreferencedisplayname) : undefined
+            displayName: r.connectionreferencedisplayname ? String(r.connectionreferencedisplayname) : undefined,
+            ownerId: r._ownerid_value ? String(r._ownerid_value) : undefined
         }));
+    }
+
+    /**
+     * Returns the current caller's `systemuserid` (and business unit) via the
+     * Dataverse `WhoAmI` function. Used to scope queries to "mine".
+     */
+    async whoAmI(): Promise<{ userId: string; businessUnitId?: string; organizationId?: string }> {
+        const url = `${this.base}/WhoAmI`;
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(url)} (WhoAmI)`);
+        const res = await fetch(url, { method: 'GET', headers });
+        await throwIfError(res, 'WhoAmI');
+        const body = (await readJson(res)) as Record<string, unknown>;
+        const userId = String(body.UserId ?? '');
+        if (!userId) {
+            throw new Error('WhoAmI returned no UserId.');
+        }
+        return {
+            userId,
+            businessUnitId: body.BusinessUnitId ? String(body.BusinessUnitId) : undefined,
+            organizationId: body.OrganizationId ? String(body.OrganizationId) : undefined
+        };
     }
 
     /** Publish a single workflow via the unbound `PublishXml` action. */

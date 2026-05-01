@@ -241,6 +241,20 @@
             }
           }
         }
+      },
+      {
+        "name": "flowplugin_listConnections",
+        "displayName": "List Power Platform Connection References",
+        "modelDescription": "List Dataverse connection references in the currently selected Power Platform environment that the signed-in user can actually use in a flow — owned by the caller, bound to a real connection, and Active. Use when the user asks to list, show, or see their connection references / connections / refs. Examples: 'list my connection references', 'show connections', 'what connection references do I have'. Read-only — returns the list as text. Do NOT use this tool to modify, create, or delete connections.",
+        "userDescription": "List your usable connection references in the selected Power Platform environment.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "listConnections",
+        "tags": ["flowplugin", "power-automate"],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
       }
     ],
     "configuration": {

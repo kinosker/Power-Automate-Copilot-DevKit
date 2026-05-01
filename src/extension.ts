@@ -17,6 +17,7 @@ import { lintFlowFile } from './validation/runLint';
 import { DownloadSolutionTool } from './tools/downloadSolutionTool';
 import { UploadFlowTool } from './tools/uploadFlowTool';
 import { ViewFlowTool } from './tools/viewFlowTool';
+import { ListConnectionsTool } from './tools/listConnectionsTool';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel('Power Automate');
@@ -120,6 +121,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.lm.registerTool(
                 'flowplugin_viewFlow',
                 new ViewFlowTool(auth, tree, pins)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                'flowplugin_listConnections',
+                new ListConnectionsTool(auth, output)
             )
         );
     }
