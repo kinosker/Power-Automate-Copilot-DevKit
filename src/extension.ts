@@ -16,6 +16,7 @@ import { getDiagnosticCollection, disposeDiagnosticCollection } from './validati
 import { lintFlowFile } from './validation/runLint';
 import { DownloadSolutionTool } from './tools/downloadSolutionTool';
 import { UploadFlowTool } from './tools/uploadFlowTool';
+import { ViewFlowTool } from './tools/viewFlowTool';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel('Power Automate');
@@ -113,6 +114,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.lm.registerTool(
                 'flowplugin_uploadFlow',
                 new UploadFlowTool(auth, tree, pins, context.workspaceState, output)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                'flowplugin_viewFlow',
+                new ViewFlowTool(auth, tree, pins)
             )
         );
     }

@@ -218,6 +218,29 @@
             }
           }
         }
+      },
+      {
+        "name": "flowplugin_viewFlow",
+        "displayName": "View Power Automate Flow in Portal",
+        "modelDescription": "Open a Power Automate flow in the make.powerautomate.com web portal in the user's default browser. Use when the user asks to view, show, open, or see a flow in the browser / portal / Power Automate. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. The `flowName` argument is also OPTIONAL when the solution contains exactly one flow — omit it to view that single flow without prompting. Examples: 'view the flow', 'show me my flow', 'open the Approval flow in the portal', 'show the Notification flow in Power Automate'. Do NOT use this tool to upload, download, or modify flows.",
+        "userDescription": "Open a Power Automate flow in the maker portal.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "viewFlow",
+        "tags": ["flowplugin", "power-automate"],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "solutionName": {
+              "type": "string",
+              "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution that contains the flow. Omit to use the solution pinned to this workspace."
+            },
+            "flowName": {
+              "type": "string",
+              "description": "OPTIONAL. Display name of the flow to view, or its workflow GUID. Omit when the solution contains exactly one flow — the tool will open that single flow automatically."
+            }
+          }
+        }
       }
     ],
     "configuration": {
