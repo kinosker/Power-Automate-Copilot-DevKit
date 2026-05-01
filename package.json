@@ -84,6 +84,11 @@
         "title": "Open Flow Definition"
       },
       {
+        "command": "flowplugin.viewFlowInPortal",
+        "title": "Power Automate: View Flow in Portal",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "flowplugin.viewFlowDiff",
         "title": "Power Automate: Compare Flow with Server",
         "icon": "$(diff)"
@@ -144,6 +149,11 @@
         {
           "command": "flowplugin.openFlowDefinition",
           "when": "view == flowplugin.tree && viewItem == flow"
+        },
+        {
+          "command": "flowplugin.viewFlowInPortal",
+          "when": "view == flowplugin.tree && viewItem == flow",
+          "group": "flowplugin@1"
         },
         {
           "command": "flowplugin.refreshFlow",

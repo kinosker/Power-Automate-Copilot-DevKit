@@ -8,6 +8,7 @@ import { resolveFlowFile, uploadFlow } from './commands/uploadFlow';
 import { validateFlowCommand } from './commands/validateFlow';
 import { registerRemoteContentProvider } from './commands/remoteContent';
 import { openFlowDiff } from './commands/diffFlow';
+import { openFlowInPortal } from './commands/openFlowInPortal';
 import { refreshFlowFromServer } from './commands/refreshFlow';
 import { assertSafeSolutionName, getSolutionsRoot } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
@@ -325,6 +326,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await openFlowDiff(auth, node.flow, node.solution, output);
         } catch (e: any) {
             vscode.window.showErrorMessage(`View diff failed: ${e.message ?? e}`);
+        }
+    });
+
+    register('flowplugin.viewFlowInPortal', async (node: { flow?: FlowInfo }) => {
+        if (!node?.flow) {
+            vscode.window.showErrorMessage('Run this command from a flow in the tree.');
+            return;
+        }
+        try {
+            await openFlowInPortal(auth, node.flow);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`View in Power Automate failed: ${e.message ?? e}`);
         }
     });
 
