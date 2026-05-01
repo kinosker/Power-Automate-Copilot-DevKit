@@ -33,7 +33,8 @@ type Node =
     | FlowNode
     | FlowDiffActionNode
     | FlowRefreshActionNode
-    | MessageNode;
+    | MessageNode
+    | SkillInstallNode;
 
 class EnvironmentNode extends vscode.TreeItem {
     readonly kind = 'environment' as const;
@@ -196,6 +197,23 @@ class MessageNode extends vscode.TreeItem {
     }
 }
 
+class SkillInstallNode extends vscode.TreeItem {
+    readonly kind = 'skillInstall' as const;
+    constructor() {
+        super('Install Copilot Skills for Power Automate', vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'skillInstall';
+        this.iconPath = new vscode.ThemeIcon(
+            'warning',
+            new vscode.ThemeColor('list.warningForeground')
+        );
+        this.tooltip = 'Installs guidance files under .github/ that GitHub Copilot uses when editing flow definitions in this workspace.';
+        this.command = {
+            command: 'flowplugin.installSkill',
+            title: 'Install Copilot Skills for Power Automate'
+        };
+    }
+}
+
 export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     private readonly _onDidChange = new vscode.EventEmitter<Node | undefined>();
     readonly onDidChangeTreeData = this._onDidChange.event;
@@ -268,24 +286,34 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     async getChildren(element?: Node): Promise<Node[]> {
         try {
             if (!element) {
+                const roots: Node[] = [];
                 if (!(await this.auth.hasActiveProfile())) {
-                    return [
+                    roots.push(
                         new MessageNode('Sign in to Power Automate…', 'sign-in', {
                             command: 'flowplugin.signIn',
                             title: 'Sign in to Power Automate'
                         })
-                    ];
+                    );
+                } else {
+                    const env = this.auth.getSelectedEnvironment();
+                    if (!env) {
+                        roots.push(
+                            new MessageNode('Select an environment…', 'cloud', {
+                                command: 'flowplugin.selectEnvironment',
+                                title: 'Select an environment'
+                            })
+                        );
+                    } else {
+                        roots.push(new EnvironmentNode(env));
+                    }
                 }
-                const env = this.auth.getSelectedEnvironment();
-                if (!env) {
-                    return [
-                        new MessageNode('Select an environment…', 'cloud', {
-                            command: 'flowplugin.selectEnvironment',
-                            title: 'Select an environment'
-                        })
-                    ];
+                // Pin the skill-install affordance to the bottom of the tree
+                // so it's discoverable without competing with the primary
+                // sign-in / environment / solution flow.
+                if (await this.shouldOfferSkillInstall()) {
+                    roots.push(new SkillInstallNode());
                 }
-                return [new EnvironmentNode(env)];
+                return roots;
             }
             if (element instanceof EnvironmentNode) {
                 const envId = element.env.EnvironmentId;
@@ -375,6 +403,23 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
             return true;
         } catch {
             return false;
+        }
+    }
+
+    /**
+     * True when a workspace is open and the bundled Copilot skill folder
+     * (`.github/skills/flowplugin`) is not present. Used to surface a
+     * one-click install affordance at the top of the tree.
+     */
+    private async shouldOfferSkillInstall(): Promise<boolean> {
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        if (!ws) { return false; }
+        const sentinel = path.join(ws.uri.fsPath, '.github', 'skills', 'flowplugin');
+        try {
+            await fs.access(sentinel);
+            return false;
+        } catch {
+            return true;
         }
     }
 

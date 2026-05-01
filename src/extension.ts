@@ -105,6 +105,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await installFlowSkill(context, output);
         } catch (e: any) {
             vscode.window.showErrorMessage(`Install Flow Skill failed: ${e.message ?? e}`);
+        } finally {
+            tree.refresh();
         }
     });
 
@@ -164,6 +166,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.window.showErrorMessage('No pinned solution. Use "Select a solution" first.');
             return;
         }
+        // Before downloading, offer to install the Copilot skill if it isn't
+        // already present in the workspace. The tree-item affordance is for
+        // discoverability; this modal is a hard nudge at the moment the user
+        // is about to materialize flow JSON locally.
+        await promptInstallSkillIfMissing(context, output, tree);
         try {
             await downloadSolution(pac, target, context.workspaceState, auth, output);
             // Auto-pin on successful download so the workspace is locked to it.
@@ -223,6 +230,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.window.showInformationMessage(
                 `Pinned '${pick.solution.FriendlyName ?? pick.solution.SolutionUniqueName}'. Click 'Download solution to see flows' next.`
             );
+
+            // Walk the user through the remaining one-time setup with two
+            // modal prompts: (1) install the Copilot skill into the workspace
+            // and (2) download the pinned solution. Both are skippable.
+            await promptInstallSkillIfMissing(context, output, tree);
+
+            const downloadPick = await vscode.window.showInformationMessage(
+                `Download '${pick.solution.FriendlyName ?? pick.solution.SolutionUniqueName}' now?`,
+                {
+                    modal: true,
+                    detail: 'Exports the solution from the environment and unpacks the flow definitions into the workspace so they can be edited locally.'
+                },
+                'Download'
+            );
+            if (downloadPick === 'Download') {
+                await vscode.commands.executeCommand('flowplugin.downloadSolution', {
+                    solution: pick.solution
+                });
+            }
         } catch (e: any) {
             vscode.window.showErrorMessage(`Pick solution failed: ${e.message ?? e}`);
         } finally {
@@ -363,6 +389,47 @@ async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | un
 
 export function deactivate(): void {
     /* no-op */
+}
+
+/**
+ * If the bundled Copilot skill is missing from the workspace, show a modal
+ * dialog offering to install it. Used at the moment the user clicks
+ * "Download solution" so the prompt is contextual rather than nagging on
+ * every activation.
+ */
+async function promptInstallSkillIfMissing(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    tree: FlowTreeProvider
+): Promise<void> {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) { return; }
+
+    const sentinel = vscode.Uri.joinPath(ws.uri, '.github', 'skills', 'flowplugin');
+    try {
+        await vscode.workspace.fs.stat(sentinel);
+        return; // already installed
+    } catch {
+        /* missing — fall through to prompt */
+    }
+
+    const pick = await vscode.window.showInformationMessage(
+        'Install Copilot Skills for Power Automate?',
+        {
+            modal: true,
+            detail: 'Copilot Skills provides guidance for GHCP on how to edit flows in a structured manner.'
+        },
+        'Install'
+    );
+    if (pick === 'Install') {
+        try {
+            await installFlowSkill(context, output);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Install Flow Skill failed: ${e.message ?? e}`);
+        } finally {
+            tree.refresh();
+        }
+    }
 }
 
 /**
