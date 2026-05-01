@@ -131,14 +131,30 @@ export async function downloadSolution(
             },
             async progress => {
                 progress.report({ message: 'Exporting…' });
-                await pac.runOrThrow([
+                // Try the synchronous export first: for small/simple solutions
+                // it skips the Dataverse async-job queue (which can sit idle
+                // for many minutes) and runs inline on the request thread.
+                // The sync endpoint has a server-side ~2 minute cap, so on
+                // timeout or "too large" failures we fall back to async.
+                const baseExportArgs = [
                     'solution', 'export',
                     '--name', solution.SolutionUniqueName,
                     '--path', tmpZip,
                     '--managed', packageType === 'Managed' ? 'true' : 'false',
-                    '--overwrite', 'true',
-                    '--async', 'true'
-                ]);
+                    '--overwrite', 'true'
+                ];
+                try {
+                    await pac.runOrThrow([...baseExportArgs, '--async', 'false']);
+                } catch (e: any) {
+                    const msg = String(e?.message ?? e);
+                    const isTimeout = /timeout|timed out|timed-out|operation.*cancel|gateway|504|408|request.*too.*large|payload.*too.*large/i.test(msg);
+                    if (!isTimeout) {
+                        throw e;
+                    }
+                    output?.appendLine(`[export] synchronous export failed (${msg.split('\n')[0]}); retrying with --async true.`);
+                    progress.report({ message: 'Exporting (async)…' });
+                    await pac.runOrThrow([...baseExportArgs, '--async', 'true']);
+                }
 
                 progress.report({ message: 'Unpacking…' });
                 await pac.runOrThrow([
