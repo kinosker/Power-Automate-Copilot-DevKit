@@ -4,7 +4,7 @@ import { PinnedSolutionService } from '../pac/PinnedSolutionService';
 import { FlowTreeProvider, SolutionInfo } from '../tree/FlowTreeProvider';
 import { addConnectionReferenceToSolution } from '../commands/addConnectionToSolution';
 
-interface AddConnectionToSolutionInput {
+interface LinkConnectionToSolutionInput {
     /**
      * Logical name of the connection reference to attach (e.g. as returned
      * by the listConnections tool). Required — display name is ambiguous.
@@ -24,8 +24,8 @@ interface AddConnectionToSolutionInput {
  * connection reference to a different connection — both are separate
  * operations.
  */
-export class AddConnectionToSolutionTool
-    implements vscode.LanguageModelTool<AddConnectionToSolutionInput> {
+export class LinkConnectionToSolutionTool
+    implements vscode.LanguageModelTool<LinkConnectionToSolutionInput> {
     constructor(
         private readonly auth: AuthService,
         private readonly tree: FlowTreeProvider,
@@ -34,7 +34,7 @@ export class AddConnectionToSolutionTool
     ) {}
 
     async prepareInvocation(
-        options: vscode.LanguageModelToolInvocationPrepareOptions<AddConnectionToSolutionInput>
+        options: vscode.LanguageModelToolInvocationPrepareOptions<LinkConnectionToSolutionInput>
     ): Promise<vscode.PreparedToolInvocation> {
         const ref = options.input?.connectionReferenceLogicalName?.trim() || 'the connection reference';
         const sol = options.input?.solutionName?.trim() || this.pinnedName() || 'the pinned solution';
@@ -52,7 +52,7 @@ export class AddConnectionToSolutionTool
     }
 
     async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<AddConnectionToSolutionInput>,
+        options: vscode.LanguageModelToolInvocationOptions<LinkConnectionToSolutionInput>,
         _token: vscode.CancellationToken
     ): Promise<vscode.LanguageModelToolResult> {
         try {

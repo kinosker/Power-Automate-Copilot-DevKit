@@ -291,12 +291,12 @@
         }
       },
       {
-        "name": "flowplugin_addConnectionToSolution",
-        "displayName": "Add Connection Reference to Solution",
+        "name": "flowplugin_linkConnectionToSolution",
+        "displayName": "Link Connection Reference to Solution",
         "modelDescription": "Attach an existing Dataverse connection reference (component type 10112) to a Power Platform solution via the AddSolutionComponent action so it is included in the next export. Use after the user has chosen a connection reference (e.g. from the listConnections tool) and wants to link it to the downloaded / pinned solution. The `connectionReferenceLogicalName` argument is REQUIRED and must be the logical name (not the display name) — exactly as returned by the listConnections tool. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. Examples: 'add this connection to my solution', 'link the SharePoint connection reference to the contoso_core solution', 'attach connection reference shared_office365_abc to the solution'. Idempotent: succeeds even if the reference is already a component of the solution. Do NOT use this tool to create a new connection or connection reference, to bind a connection reference to a different connection, or to upload / download flows.",
         "userDescription": "Add an existing connection reference to a Power Platform solution.",
         "canBeReferencedInPrompt": true,
-        "toolReferenceName": "addConnectionToSolution",
+        "toolReferenceName": "linkConnectionToSolution",
         "tags": ["flowplugin", "power-automate"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
