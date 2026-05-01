@@ -166,6 +166,52 @@
         }
       ]
     },
+    "languageModelTools": [
+      {
+        "name": "flowplugin_downloadSolution",
+        "displayName": "Download Power Automate Solution",
+        "modelDescription": "Download (pull) a Power Platform solution from the selected environment and unpack its flows into the workspace. Use when the user asks to download, pull, refresh, or sync down a solution by name. If the local copy has unsaved changes the user is prompted before they are overwritten.",
+        "userDescription": "Download a Power Platform solution and unpack its flows into the workspace.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "downloadSolution",
+        "tags": ["flowplugin", "power-automate"],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "solutionName": {
+              "type": "string",
+              "description": "Unique name (preferred) or friendly name of the Power Platform solution to download."
+            }
+          },
+          "required": ["solutionName"]
+        }
+      },
+      {
+        "name": "flowplugin_uploadFlow",
+        "displayName": "Upload Power Automate Flow",
+        "modelDescription": "Upload (sync) a single Power Automate flow from the workspace back to Dataverse. Use when the user asks to upload, sync, push, or publish a flow. The tool detects server-side drift; if the server version changed since the last download, the user is asked whether to overwrite, pull and discard local changes, or view the diff first.",
+        "userDescription": "Upload a Power Automate flow from the workspace back to the selected environment.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "uploadFlow",
+        "tags": ["flowplugin", "power-automate"],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "solutionName": {
+              "type": "string",
+              "description": "Unique name (preferred) or friendly name of the solution that contains the flow."
+            },
+            "flowName": {
+              "type": "string",
+              "description": "Display name of the flow to upload, or its workflow GUID."
+            }
+          },
+          "required": ["solutionName", "flowName"]
+        }
+      }
+    ],
     "configuration": {
       "title": "Power Automate Flow ALM",
       "properties": {

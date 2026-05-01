@@ -13,6 +13,8 @@ import { assertSafeSolutionName, getSolutionsRoot } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
 import { lintFlowFile } from './validation/runLint';
+import { DownloadSolutionTool } from './tools/downloadSolutionTool';
+import { UploadFlowTool } from './tools/uploadFlowTool';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel('Power Automate');
@@ -95,6 +97,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const register = (id: string, fn: (...args: any[]) => any) =>
         context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+
+    // Copilot Chat agent-mode tools. Wraps the same downloadSolution /
+    // uploadFlow code paths used by the tree buttons so destructive-op
+    // confirmations remain identical regardless of entry point.
+    if (typeof vscode.lm?.registerTool === 'function') {
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                'flowplugin_downloadSolution',
+                new DownloadSolutionTool(pac, tree, context.workspaceState, auth, output)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                'flowplugin_uploadFlow',
+                new UploadFlowTool(auth, tree, context.workspaceState, output)
+            )
+        );
+    }
 
     register('flowplugin.refresh', () => tree.refresh());
 

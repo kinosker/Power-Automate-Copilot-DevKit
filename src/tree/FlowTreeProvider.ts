@@ -418,7 +418,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         }
     }
 
-    private async listFlows(sol: SolutionInfo): Promise<FlowInfo[]> {
+    async listFlows(sol: SolutionInfo): Promise<FlowInfo[]> {
         // This pac version has no `flow list` command, so read flows from the
         // unpacked solution folder instead. Users see flows after downloading.
         const ws = vscode.workspace.workspaceFolders?.[0];
