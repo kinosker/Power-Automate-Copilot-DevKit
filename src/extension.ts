@@ -19,6 +19,7 @@ import { UploadFlowTool } from './tools/uploadFlowTool';
 import { ViewFlowTool } from './tools/viewFlowTool';
 import { ListConnectionsTool } from './tools/listConnectionsTool';
 import { CreateConnectionsTool } from './tools/createConnectionsTool';
+import { AddConnectionToSolutionTool } from './tools/addConnectionToSolutionTool';
 import { openCreateConnections } from './commands/createConnections';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -135,6 +136,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.lm.registerTool(
                 'flowplugin_createConnections',
                 new CreateConnectionsTool(auth)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                'flowplugin_addConnectionToSolution',
+                new AddConnectionToSolutionTool(auth, tree, pins, output)
             )
         );
     }

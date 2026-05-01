@@ -339,6 +339,111 @@ export class DataverseClient {
         };
     }
 
+    /**
+     * Look up a connection reference row by its logical name. Returns the
+     * row's GUID (`connectionreferenceid`) so callers can target it by id.
+     * Returns `undefined` when no row matches.
+     */
+    async getConnectionReferenceByLogicalName(
+        logicalName: string
+    ): Promise<{ id: string; displayName?: string; connectionId?: string } | undefined> {
+        if (!LOGICAL_NAME_RE.test(logicalName)) {
+            throw new Error(`Invalid connection reference logical name: ${logicalName}`);
+        }
+        const filter = encodeURIComponent(`connectionreferencelogicalname eq '${logicalName.replace(/'/g, "''")}'`);
+        const url =
+            `${this.base}/connectionreferences` +
+            `?$select=connectionreferenceid,connectionreferencedisplayname,connectionid` +
+            `&$filter=${filter}`;
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(url)}`);
+        const res = await fetch(url, { method: 'GET', headers });
+        await throwIfError(res, 'GET connectionreferences (lookup)');
+        const json = (await readJson(res)) as { value?: any[] };
+        const row = json.value?.[0];
+        if (!row?.connectionreferenceid) {
+            return undefined;
+        }
+        return {
+            id: String(row.connectionreferenceid),
+            displayName: row.connectionreferencedisplayname ? String(row.connectionreferencedisplayname) : undefined,
+            connectionId: row.connectionid ? String(row.connectionid) : undefined
+        };
+    }
+
+    /**
+     * Discover the canonical `componenttype` enum value for a given object
+     * by reading any existing `solutioncomponents` row that references it
+     * (every component appears in at least the default Active solution).
+     *
+     * Dataverse's `componenttype` option-set is environment-version-specific
+     * (e.g. ConnectionReference is 10067 in some envs, different in others;
+     * 10112 in this codebase's earlier guess actually mapped to
+     * `desktopflowmodule`), so looking the value up at runtime avoids
+     * hardcoded mismatches.
+     *
+     * Returns `undefined` when no `solutioncomponents` row references the
+     * object — typically because the caller passed a wrong id.
+     */
+    async lookupComponentTypeForObject(objectId: string): Promise<number | undefined> {
+        assertGuid(objectId, 'objectId');
+        const filter = encodeURIComponent(`objectid eq ${objectId}`);
+        const url = `${this.base}/solutioncomponents?$select=componenttype&$top=1&$filter=${filter}`;
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(url)} (componenttype lookup)`);
+        const res = await fetch(url, { method: 'GET', headers });
+        await throwIfError(res, 'GET solutioncomponents (componenttype lookup)');
+        const json = (await readJson(res)) as { value?: { componenttype?: number }[] };
+        const row = json.value?.[0];
+        return typeof row?.componenttype === 'number' ? row.componenttype : undefined;
+    }
+
+    /**
+     * Add an existing component to a solution via the `AddSolutionComponent`
+     * unbound action. Used to attach a connection reference to a user
+     * solution so the next export includes it.
+     *
+     * Pass `componentType` discovered via `lookupComponentTypeForObject` to
+     * avoid hardcoding option-set values that vary across env versions.
+     *
+     * No-op semantics: Dataverse returns success even if the component is
+     * already part of the solution.
+     */
+    async addSolutionComponent(
+        solutionUniqueName: string,
+        componentId: string,
+        componentType: number,
+        opts?: { addRequiredComponents?: boolean; doNotIncludeSubcomponents?: boolean }
+    ): Promise<void> {
+        assertGuid(componentId, 'componentId');
+        const url = `${this.base}/AddSolutionComponent`;
+        const headers = {
+            ...(await this.authHeaders()),
+            'Content-Type': 'application/json'
+        };
+        const body = {
+            ComponentId: componentId,
+            ComponentType: componentType,
+            SolutionUniqueName: solutionUniqueName,
+            AddRequiredComponents: opts?.addRequiredComponents ?? false,
+            // `DoNotIncludeSubcomponents=true` is only legal for Entity root
+            // components (tables). For everything else (e.g. connection
+            // references) Dataverse rejects the call with HTTP 400. Default
+            // to `false`; non-entity components have no subcomponents to
+            // include anyway, so the flag is effectively a no-op there.
+            DoNotIncludeSubcomponents: opts?.doNotIncludeSubcomponents ?? false
+        };
+        this.output.appendLine(
+            `> POST ${redactUrl(url)} (AddSolutionComponent type=${componentType} id=${componentId} solution=${solutionUniqueName})`
+        );
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body)
+        });
+        await throwIfError(res, 'AddSolutionComponent');
+    }
+
     /** Publish a single workflow via the unbound `PublishXml` action. */
     async publishWorkflow(workflowId: string): Promise<void> {
         assertGuid(workflowId, 'workflowId');
