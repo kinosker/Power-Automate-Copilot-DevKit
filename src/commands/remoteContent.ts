@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomUUID } from 'crypto';
 
 /**
  * In-memory store backing the `flowplugin-remote:` virtual document scheme.
@@ -26,7 +27,9 @@ export function registerRemoteContentProvider(context: vscode.ExtensionContext):
  */
 export function stashRemoteContent(label: string, content: string): vscode.Uri {
     const safe = encodeURIComponent(label.replace(/[\\/]/g, '_')).slice(0, 120);
-    const uri = vscode.Uri.parse(`${REMOTE_SCHEME}:/${safe}-${Date.now()}.json`);
+    // randomUUID() yields an unguessable suffix; prevents another in-process
+    // TextDocumentContentProvider from racing on the same scheme+path.
+    const uri = vscode.Uri.parse(`${REMOTE_SCHEME}:/${safe}-${randomUUID()}.json`);
     remoteDocs.set(uri.toString(), content);
     return uri;
 }

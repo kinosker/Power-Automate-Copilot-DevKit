@@ -447,6 +447,17 @@ async function installFlowSkill(
 
     // Discover bundled files relative to the source root.
     const relFiles = await listFilesRecursive(sourceRoot);
+    // Defense-in-depth: even though every segment originates from this
+    // extension's own bundled `resources/skill/` directory, vscode.Uri.joinPath
+    // does not reject `..` traversal. A future packaging mistake could let a
+    // ".." segment write outside the workspace root.
+    for (const rel of relFiles) {
+        for (const seg of rel) {
+            if (!seg || seg === '.' || seg === '..' || seg.includes('/') || seg.includes('\\') || seg.includes('\0')) {
+                throw new Error(`Refusing unsafe skill path segment: '${seg}' in '${rel.join('/')}'.`);
+            }
+        }
+    }
     if (relFiles.length === 0) {
         vscode.window.showWarningMessage('No skill files were bundled with this extension.');
         return;

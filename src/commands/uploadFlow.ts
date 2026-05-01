@@ -480,7 +480,11 @@ function extractConnectionKeys(text: string): string[] {
         ?? (parsed as any)?.connectionReferences;
     const resolved = new Set<string>();
     for (const key of out) {
-        const entry = refsRoot && typeof refsRoot === 'object' ? (refsRoot as Record<string, any>)[key] : undefined;
+        // Use Object.hasOwn to avoid resolving keys like "__proto__" /
+        // "constructor" against Object.prototype on untrusted JSON.
+        const entry = refsRoot && typeof refsRoot === 'object' && Object.hasOwn(refsRoot as object, key)
+            ? (refsRoot as Record<string, any>)[key]
+            : undefined;
         const logical = entry?.connection?.connectionReferenceLogicalName
             ?? entry?.connection?.ConnectionReferenceLogicalName
             ?? entry?.connectionReferenceLogicalName

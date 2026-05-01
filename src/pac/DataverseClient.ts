@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import { DataverseAuth, normalizeOrgUrl } from './DataverseAuth';
+import { assertGuid } from './validation';
+
+/** Dataverse logical-name charset: lowercase letter, then letters/digits/underscore. */
+const LOGICAL_NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,127}$/;
 
 const API_PATH = '/api/data/v9.2';
 
@@ -68,6 +72,7 @@ export class DataverseClient {
         workflowId: string,
         select: (keyof WorkflowRecord)[] = ['workflowid', 'name', 'modifiedon', 'statecode', 'statuscode']
     ): Promise<WorkflowRecord> {
+        assertGuid(workflowId, 'workflowId');
         const url = `${this.base}/workflows(${workflowId})?$select=${select.join(',')}`;
         const headers = await this.authHeaders();
         this.output.appendLine(`> GET ${redactUrl(url)}`);
@@ -100,6 +105,7 @@ export class DataverseClient {
         clientdata: string,
         opts?: { ifMatch?: string }
     ): Promise<void> {
+        assertGuid(workflowId, 'workflowId');
         const url = `${this.base}/workflows(${workflowId})`;
         const ifMatch = opts?.ifMatch ?? '*';
         const headers = {
@@ -129,6 +135,7 @@ export class DataverseClient {
      * workflow (statecode=1) implicitly publishes it.
      */
     async setWorkflowState(workflowId: string, statecode: number, statuscode: number): Promise<void> {
+        assertGuid(workflowId, 'workflowId');
         const url = `${this.base}/workflows(${workflowId})`;
         const headers = {
             ...(await this.authHeaders()),
@@ -249,7 +256,14 @@ export class DataverseClient {
         const select = '$select=connectionreferencelogicalname,connectionid,connectionreferencedisplayname';
         let url = `${this.base}/connectionreferences?${select}`;
         if (logicalNames && logicalNames.length > 0) {
-            const filter = logicalNames
+            // Defense-in-depth: drop any name that isn't a valid Dataverse
+            // logical-name token before interpolating into the OData filter.
+            const safeNames = logicalNames.filter(n => LOGICAL_NAME_RE.test(n));
+            if (safeNames.length === 0) {
+                this.output.appendLine('[connectionreferences] no valid logical names to query.');
+                return [];
+            }
+            const filter = safeNames
                 .map(n => `connectionreferencelogicalname eq '${n.replace(/'/g, "''")}'`)
                 .join(' or ');
             url += `&$filter=${encodeURIComponent(filter)}`;
@@ -268,6 +282,7 @@ export class DataverseClient {
 
     /** Publish a single workflow via the unbound `PublishXml` action. */
     async publishWorkflow(workflowId: string): Promise<void> {
+        assertGuid(workflowId, 'workflowId');
         const url = `${this.base}/PublishXml`;
         const headers = {
             ...(await this.authHeaders()),
