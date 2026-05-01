@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { PacCli } from '../pac/PacCli';
 import { AuthService } from '../pac/AuthService';
+import { PinnedSolutionService } from '../pac/PinnedSolutionService';
 import { FlowTreeProvider, SolutionInfo } from '../tree/FlowTreeProvider';
 import { downloadSolution } from '../commands/download';
 
@@ -23,13 +24,15 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
         private readonly tree: FlowTreeProvider,
         private readonly state: vscode.Memento,
         private readonly auth: AuthService,
+        private readonly pins: PinnedSolutionService,
         private readonly output: vscode.OutputChannel
     ) {}
 
     async prepareInvocation(
         options: vscode.LanguageModelToolInvocationPrepareOptions<DownloadSolutionInput>
     ): Promise<vscode.PreparedToolInvocation> {
-        const name = options.input?.solutionName?.trim() || 'the pinned solution';
+        const requested = options.input?.solutionName?.trim();
+        const name = requested || this.pinnedName() || 'the pinned solution';
         return {
             invocationMessage: `Downloading solution '${name}'…`,
             confirmationMessages: {
@@ -65,9 +68,11 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
     private async resolveSolution(
         requested: string | undefined
     ): Promise<{ solution: SolutionInfo } | { error: string }> {
-        const trimmed = requested?.trim();
+        // No explicit name → use the workspace's pinned solution if one exists.
+        // Mirrors the behavior of the `flowplugin.downloadSolution` command.
+        const trimmed = (requested?.trim()) || this.pinnedName();
         if (!trimmed) {
-            return { error: 'No solution name provided. Pass `solutionName` (the unique name or friendly name).' };
+            return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName` (the unique name or friendly name).' };
         }
         let sols: SolutionInfo[];
         try {
@@ -94,6 +99,13 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
             .map(s => `'${s.SolutionUniqueName}'${s.FriendlyName ? ` (${s.FriendlyName})` : ''}`);
         const hint = close.length > 0 ? ` Closest matches: ${close.join(', ')}.` : '';
         return { error: `No solution named '${trimmed}' found.${hint}` };
+    }
+
+    /** Returns the unique name of the solution pinned to this workspace, if any. */
+    private pinnedName(): string | undefined {
+        const env = this.auth.getSelectedEnvironment();
+        if (!env?.EnvironmentId) { return undefined; }
+        return this.pins.get(env.EnvironmentId)?.solutionUniqueName;
     }
 }
 

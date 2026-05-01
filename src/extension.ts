@@ -105,13 +105,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.lm.registerTool(
                 'flowplugin_downloadSolution',
-                new DownloadSolutionTool(pac, tree, context.workspaceState, auth, output)
+                new DownloadSolutionTool(pac, tree, context.workspaceState, auth, pins, output)
             )
         );
         context.subscriptions.push(
             vscode.lm.registerTool(
                 'flowplugin_uploadFlow',
-                new UploadFlowTool(auth, tree, context.workspaceState, output)
+                new UploadFlowTool(auth, tree, pins, context.workspaceState, output)
             )
         );
     }

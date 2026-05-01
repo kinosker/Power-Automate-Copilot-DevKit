@@ -170,7 +170,7 @@
       {
         "name": "flowplugin_downloadSolution",
         "displayName": "Download Power Automate Solution",
-        "modelDescription": "Download (pull) a Power Platform solution from the selected environment and unpack its flows into the workspace. Use when the user asks to download, pull, refresh, or sync down a solution by name. If the local copy has unsaved changes the user is prompted before they are overwritten.",
+        "modelDescription": "Download (pull) a Power Platform solution from the selected environment and unpack its flows into the workspace. Use when the user asks to download, pull, refresh, or sync down a solution. The `solutionName` argument is OPTIONAL: if the user does not specify a solution by name, omit the argument and the tool will use the solution already pinned to this workspace. Examples: 'download solution', 'pull the solution', 'download the contoso_core solution', 'refresh my solution from the environment'. Do NOT use this tool to upload or push local changes back to the server — that is the uploadFlow tool.",
         "userDescription": "Download a Power Platform solution and unpack its flows into the workspace.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "downloadSolution",
@@ -181,16 +181,15 @@
           "properties": {
             "solutionName": {
               "type": "string",
-              "description": "Unique name (preferred) or friendly name of the Power Platform solution to download."
+              "description": "OPTIONAL. Unique name (preferred) or friendly name of the Power Platform solution to download. Omit to use the solution already pinned to this workspace."
             }
-          },
-          "required": ["solutionName"]
+          }
         }
       },
       {
         "name": "flowplugin_uploadFlow",
         "displayName": "Upload Power Automate Flow",
-        "modelDescription": "Upload (sync) a single Power Automate flow from the workspace back to Dataverse. Use when the user asks to upload, sync, push, or publish a flow. The tool detects server-side drift; if the server version changed since the last download, the user is asked whether to overwrite, pull and discard local changes, or view the diff first.",
+        "modelDescription": "Upload (sync) a single Power Automate flow from the workspace back to Dataverse. Use when the user asks to upload, sync, push, or publish a flow. The tool detects server-side drift; if the server version changed since the last download, the user is asked whether to overwrite, pull and discard local changes, or view the diff first. Examples: 'upload my flow', 'sync the Approval flow', 'push the Notification flow'. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. The `flowName` argument is also OPTIONAL when the solution contains exactly one flow — omit it to upload that single flow without prompting. Do NOT use this tool to download or pull a solution — that is the downloadSolution tool.",
         "userDescription": "Upload a Power Automate flow from the workspace back to the selected environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "uploadFlow",
@@ -201,14 +200,13 @@
           "properties": {
             "solutionName": {
               "type": "string",
-              "description": "Unique name (preferred) or friendly name of the solution that contains the flow."
+              "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution that contains the flow. Omit to use the solution pinned to this workspace."
             },
             "flowName": {
               "type": "string",
-              "description": "Display name of the flow to upload, or its workflow GUID."
+              "description": "OPTIONAL. Display name of the flow to upload, or its workflow GUID. Omit when the solution contains exactly one flow — the tool will upload that single flow automatically."
             }
-          },
-          "required": ["solutionName", "flowName"]
+          }
         }
       }
     ],

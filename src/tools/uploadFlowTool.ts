@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../pac/AuthService';
+import { PinnedSolutionService } from '../pac/PinnedSolutionService';
 import { FlowTreeProvider, FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { uploadFlow } from '../commands/uploadFlow';
 
@@ -19,6 +20,7 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
     constructor(
         private readonly auth: AuthService,
         private readonly tree: FlowTreeProvider,
+        private readonly pins: PinnedSolutionService,
         private readonly state: vscode.Memento,
         private readonly output: vscode.OutputChannel
     ) {}
@@ -27,7 +29,7 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
         options: vscode.LanguageModelToolInvocationPrepareOptions<UploadFlowInput>
     ): Promise<vscode.PreparedToolInvocation> {
         const flow = options.input?.flowName?.trim() || 'the requested flow';
-        const sol = options.input?.solutionName?.trim() || 'the pinned solution';
+        const sol = options.input?.solutionName?.trim() || this.pinnedName() || 'the pinned solution';
         return {
             invocationMessage: `Uploading '${flow}' from '${sol}'…`,
             confirmationMessages: {
@@ -63,13 +65,11 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
     private async resolve(
         input: UploadFlowInput | undefined
     ): Promise<{ solution: SolutionInfo; flow: FlowInfo } | { error: string }> {
-        const solName = input?.solutionName?.trim();
+        // Solution defaults to the pinned solution when not provided.
+        const solName = input?.solutionName?.trim() || this.pinnedName();
         const flowName = input?.flowName?.trim();
         if (!solName) {
-            return { error: 'No solution name provided. Pass `solutionName`.' };
-        }
-        if (!flowName) {
-            return { error: 'No flow name provided. Pass `flowName` (display name or workflow GUID).' };
+            return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName`.' };
         }
 
         // Resolve solution: match by SolutionUniqueName first, then FriendlyName.
@@ -95,6 +95,20 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
                     `Run the download tool first.`
             };
         }
+
+        // No flow name provided: if the solution contains exactly one flow,
+        // upload it. Otherwise list candidates so the user can disambiguate.
+        if (!flowName) {
+            if (flows.length === 1) {
+                return { solution, flow: flows[0] };
+            }
+            const names = flows.map(f => `'${f.DisplayName}'`).join(', ');
+            return {
+                error: `Solution '${solution.SolutionUniqueName}' contains ${flows.length} flows. ` +
+                    `Specify which one with \`flowName\`. Available: ${names}.`
+            };
+        }
+
         const fLower = flowName.toLowerCase();
         const guidLike = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(flowName);
         const matches = guidLike
@@ -116,6 +130,13 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
             .map(f => `'${f.DisplayName}'`);
         const hint = close.length > 0 ? ` Closest matches: ${close.join(', ')}.` : '';
         return { error: `No flow named '${flowName}' in solution '${solution.SolutionUniqueName}'.${hint}` };
+    }
+
+    /** Returns the unique name of the solution pinned to this workspace, if any. */
+    private pinnedName(): string | undefined {
+        const env = this.auth.getSelectedEnvironment();
+        if (!env?.EnvironmentId) { return undefined; }
+        return this.pins.get(env.EnvironmentId)?.solutionUniqueName;
     }
 }
 
