@@ -305,13 +305,13 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                         );
                     } else {
                         roots.push(new EnvironmentNode(env));
+                        // Only surface the skill-install affordance once an
+                        // environment is loaded, so it doesn't compete with
+                        // the sign-in / select-environment prompts.
+                        if (await this.shouldOfferSkillInstall()) {
+                            roots.push(new SkillInstallNode());
+                        }
                     }
-                }
-                // Pin the skill-install affordance to the bottom of the tree
-                // so it's discoverable without competing with the primary
-                // sign-in / environment / solution flow.
-                if (await this.shouldOfferSkillInstall()) {
-                    roots.push(new SkillInstallNode());
                 }
                 return roots;
             }
