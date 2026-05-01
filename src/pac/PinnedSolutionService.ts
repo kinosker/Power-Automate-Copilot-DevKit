@@ -56,18 +56,17 @@ export class PinnedSolutionService {
 
     /**
      * If no pin exists for the env yet, but exactly one unpacked solution
-     * folder lives under `<solutionsRoot>/`, adopt it as the pin. This handles
+     * folder lives under the configured solutions root, adopt it as the pin. This handles
      * cloning a workspace from another machine where workspaceState is empty.
      */
     async autoDetect(
         environmentId: string,
-        workspaceFolder: string,
         solutionsRoot: string
     ): Promise<PinRecord | undefined> {
         if (this.get(environmentId)) {
             return this.get(environmentId);
         }
-        const root = path.join(workspaceFolder, solutionsRoot);
+        const root = solutionsRoot;
         let entries: string[];
         try {
             entries = await fs.readdir(root);

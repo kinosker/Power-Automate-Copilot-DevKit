@@ -14,7 +14,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In untrusted workspaces, the workspace-scoped 'flowplugin.pacPath' setting is ignored; the user/global value is used instead."
+      "description": "In untrusted workspaces, workspace-scoped 'flowplugin.pacPath' and 'flowplugin.solutionsRoot' settings are ignored; user/global values are used instead."
     }
   },
   "activationEvents": [

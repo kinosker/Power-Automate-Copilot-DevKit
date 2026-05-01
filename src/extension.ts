@@ -1,16 +1,15 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs/promises';
 import { PacCli } from './pac/PacCli';
 import { AuthService, OrgInfo } from './pac/AuthService';
 import { FlowTreeProvider, SolutionInfo, FlowInfo } from './tree/FlowTreeProvider';
 import { downloadSolution } from './commands/download';
-import { uploadFlow } from './commands/uploadFlow';
+import { resolveFlowFile, uploadFlow } from './commands/uploadFlow';
 import { validateFlowCommand } from './commands/validateFlow';
 import { registerRemoteContentProvider } from './commands/remoteContent';
 import { openFlowDiff } from './commands/diffFlow';
 import { refreshFlowFromServer } from './commands/refreshFlow';
-import { assertSafeSolutionName } from './pac/validation';
+import { assertSafeSolutionName, getSolutionsRoot } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
 import { lintFlowFile } from './validation/runLint';
@@ -52,9 +51,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Watch local workflow files so the tree's drift indicator updates the
     // moment the user edits/saves a flow JSON. Without this the cached
     // 'unchanged' status sticks until the user hits the tree refresh button.
-    const flowsRoot = vscode.workspace
-        .getConfiguration('flowplugin')
-        .get<string>('solutionsRoot') || 'solutions';
+    let flowsRoot = 'solutions';
+    try {
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        if (ws) {
+            flowsRoot = getSolutionsRoot(ws.uri.fsPath).relativePath.replace(/\\/g, '/');
+        }
+    } catch (e: any) {
+        output.appendLine(`[watcher] ignoring invalid flowplugin.solutionsRoot: ${e.message ?? e}`);
+    }
     const flowWatcher = vscode.workspace.createFileSystemWatcher(
         `**/${flowsRoot}/*/Workflows/*.json`
     );
@@ -339,19 +344,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.window.showErrorMessage('Open a workspace folder first.');
             return;
         }
-        const solutionsRoot =
-            vscode.workspace.getConfiguration('flowplugin').get<string>('solutionsRoot') || 'solutions';
-        const folder = path.join(ws.uri.fsPath, solutionsRoot, node.solution.SolutionUniqueName, 'Workflows');
+        const folder = path.join(getSolutionsRoot(ws.uri.fsPath).absolutePath, node.solution.SolutionUniqueName);
         try {
-            const files = await fs.readdir(folder);
-            const match = files.find(f =>
-                node.flow!.DisplayName && f.toLowerCase().includes(node.flow!.DisplayName.toLowerCase())
-            ) ?? files.find(f => f.endsWith('.json'));
-            if (!match) {
-                vscode.window.showWarningMessage('Flow definition not found locally. Download the solution first.');
-                return;
-            }
-            const doc = await vscode.workspace.openTextDocument(path.join(folder, match));
+            const flowFile = await resolveFlowFile(folder, node.flow);
+            const doc = await vscode.workspace.openTextDocument(flowFile);
             await vscode.window.showTextDocument(doc);
         } catch {
             vscode.window.showWarningMessage('Flow definition not found locally. Download the solution first.');

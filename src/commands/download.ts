@@ -8,7 +8,7 @@ import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
 import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../pac/FlowManifest';
-import { assertSafeSolutionName } from '../pac/validation';
+import { assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
 
 function cfg<T>(key: string, fallback: T): T {
@@ -82,9 +82,9 @@ export async function downloadSolution(
 ): Promise<void> {
     assertSafeSolutionName(solution.SolutionUniqueName);
     const root = workspaceRoot();
-    const solutionsRoot = cfg<string>('solutionsRoot', 'solutions');
+    const solutionsRoot = getSolutionsRoot(root).absolutePath;
     const packageType = cfg<string>('packageType', 'Unmanaged');
-    const targetFolder = path.join(root, solutionsRoot, solution.SolutionUniqueName);
+    const targetFolder = path.join(solutionsRoot, solution.SolutionUniqueName);
 
     // If the folder already exists, check whether the user edited it since the
     // last download. If yes, confirm before overwriting.

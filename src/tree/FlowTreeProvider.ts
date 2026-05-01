@@ -7,6 +7,7 @@ import { PinnedSolutionService } from '../pac/PinnedSolutionService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
 import { clientDataEquals, readBaseline, readFlowManifest } from '../pac/FlowManifest';
+import { getSolutionsRoot } from '../pac/validation';
 
 export interface SolutionInfo {
     SolutionUniqueName: string;
@@ -324,11 +325,8 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 if (!pin) {
                     // Best-effort auto-detect from disk before prompting the user.
                     const ws = vscode.workspace.workspaceFolders?.[0];
-                    const solutionsRoot =
-                        vscode.workspace.getConfiguration('flowplugin').get<string>('solutionsRoot') ||
-                        'solutions';
                     if (ws) {
-                        pin = await this.pins.autoDetect(envId, ws.uri.fsPath, solutionsRoot);
+                        pin = await this.pins.autoDetect(envId, getSolutionsRoot(ws.uri.fsPath).absolutePath);
                     }
                 }
                 if (!pin) {
@@ -389,11 +387,8 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         if (!ws) {
             return false;
         }
-        const solutionsRoot =
-            vscode.workspace.getConfiguration('flowplugin').get<string>('solutionsRoot') || 'solutions';
         const solXml = path.join(
-            ws.uri.fsPath,
-            solutionsRoot,
+            getSolutionsRoot(ws.uri.fsPath).absolutePath,
             solutionUniqueName,
             'Other',
             'Solution.xml'
@@ -430,9 +425,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         if (!ws) {
             return [];
         }
-        const solutionsRoot =
-            vscode.workspace.getConfiguration('flowplugin').get<string>('solutionsRoot') || 'solutions';
-        const folder = path.join(ws.uri.fsPath, solutionsRoot, sol.SolutionUniqueName, 'Workflows');
+        const folder = path.join(getSolutionsRoot(ws.uri.fsPath).absolutePath, sol.SolutionUniqueName, 'Workflows');
         let entries: string[];
         try {
             entries = await fs.readdir(folder);
@@ -501,11 +494,8 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     solutionUniqueName,
                     { includeClientdata: true }
                 );
-                const solutionsRoot = vscode.workspace
-                    .getConfiguration('flowplugin')
-                    .get<string>('solutionsRoot') || 'solutions';
                 const workflowsDir = path.join(
-                    ws.uri.fsPath, solutionsRoot, solutionUniqueName, 'Workflows'
+                    getSolutionsRoot(ws.uri.fsPath).absolutePath, solutionUniqueName, 'Workflows'
                 );
                 const dirEntries = await fs.readdir(workflowsDir).catch(() => [] as string[]);
                 const map = new Map<string, 'changed' | 'unchanged'>();

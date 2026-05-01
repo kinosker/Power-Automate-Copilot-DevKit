@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient, PreconditionFailedError } from '../pac/DataverseClient';
 import { AuthService } from '../pac/AuthService';
-import { assertGuid, assertSafeSolutionName } from '../pac/validation';
+import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { lintFlowFile } from '../validation/runLint';
 import {
@@ -49,7 +49,8 @@ function shouldAutoPublish(): boolean {
 }
 
 /** Locate the `<DisplayName>-<GUID>.json` file for the given flow inside the unpacked solution. */
-export async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {    const dir = path.join(solutionFolder, 'Workflows');
+export async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {
+    const dir = path.join(solutionFolder, 'Workflows');
     const entries = await fs.readdir(dir).catch(() => [] as string[]);
     const guid = flow.WorkflowId?.toLowerCase();
     const display = flow.DisplayName?.toLowerCase();
@@ -121,8 +122,7 @@ export async function uploadFlow(
     }
 
     const root = workspaceRoot();
-    const solutionsRoot = cfg<string>('solutionsRoot', 'solutions');
-    const solutionFolder = path.join(root, solutionsRoot, solution.SolutionUniqueName);
+    const solutionFolder = path.join(getSolutionsRoot(root).absolutePath, solution.SolutionUniqueName);
     const flowFile = await resolveFlowFile(solutionFolder, flow);
 
     const text = await fs.readFile(flowFile, 'utf8');

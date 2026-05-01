@@ -1,3 +1,6 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+
 /** Allowed characters for Dataverse solution unique names: letters/digits/underscore. */
 const SOLUTION_NAME_RE = /^[A-Za-z0-9_]{1,128}$/;
 /** GUID with optional braces. */
@@ -25,4 +28,63 @@ export function assertGuid(id: string | undefined, label = 'id'): asserts id is 
     if (!id || !GUID_RE.test(id)) {
         throw new Error(`Refusing to use unsafe ${label}: '${id ?? ''}'`);
     }
+}
+
+export interface SolutionsRoot {
+    /** Normalized workspace-relative path, using the platform separator. */
+    relativePath: string;
+    /** Absolute path guaranteed to be inside the workspace folder. */
+    absolutePath: string;
+}
+
+function trustedConfigValue<T>(key: string, fallback: T): T {
+    const cfg = vscode.workspace.getConfiguration('flowplugin');
+    const inspect = cfg.inspect<T>(key);
+    let value = inspect?.globalValue ?? inspect?.defaultValue ?? fallback;
+    if (vscode.workspace.isTrusted) {
+        value = inspect?.workspaceFolderValue ?? inspect?.workspaceValue ?? value;
+    }
+    return value ?? fallback;
+}
+
+export function resolveWorkspaceRelativePath(
+    workspaceFolder: string,
+    configuredPath: string,
+    label: string
+): SolutionsRoot {
+    const raw = configuredPath.trim();
+    if (!raw) {
+        throw new Error(`Refusing empty ${label}.`);
+    }
+    if (raw.includes('\0')) {
+        throw new Error(`Refusing unsafe ${label}: contains a null byte.`);
+    }
+    if (path.isAbsolute(raw) || path.win32.isAbsolute(raw) || path.posix.isAbsolute(raw)) {
+        throw new Error(`Refusing unsafe ${label}: '${configuredPath}' must be workspace-relative.`);
+    }
+    if (/^[A-Za-z]:/.test(raw)) {
+        throw new Error(`Refusing unsafe ${label}: '${configuredPath}' must not be drive-qualified.`);
+    }
+    if (/[<>:"|?*]/.test(raw)) {
+        throw new Error(`Refusing unsafe ${label}: '${configuredPath}' contains unsupported path characters.`);
+    }
+
+    const parts = raw.split(/[\\/]+/).filter(part => part.length > 0 && part !== '.');
+    if (parts.some(part => part === '..')) {
+        throw new Error(`Refusing unsafe ${label}: '${configuredPath}' must not contain '..'.`);
+    }
+
+    const relativePath = parts.length > 0 ? path.join(...parts) : '.';
+    const absolutePath = path.resolve(workspaceFolder, relativePath);
+    const fromWorkspace = path.relative(workspaceFolder, absolutePath);
+    if (fromWorkspace.startsWith('..') || path.isAbsolute(fromWorkspace)) {
+        throw new Error(`Refusing unsafe ${label}: '${configuredPath}' escapes the workspace.`);
+    }
+
+    return { relativePath, absolutePath };
+}
+
+export function getSolutionsRoot(workspaceFolder: string): SolutionsRoot {
+    const configuredPath = trustedConfigValue<string>('solutionsRoot', 'solutions');
+    return resolveWorkspaceRelativePath(workspaceFolder, configuredPath, 'flowplugin.solutionsRoot');
 }

@@ -5,7 +5,7 @@ import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
 import { writeBaseline } from '../pac/FlowManifest';
-import { assertGuid, assertSafeSolutionName } from '../pac/validation';
+import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 
 function workspaceRoot(): string {
@@ -44,9 +44,7 @@ export async function refreshFlowFromServer(
     }
 
     const root = workspaceRoot();
-    const solutionsRoot =
-        vscode.workspace.getConfiguration('flowplugin').get<string>('solutionsRoot') || 'solutions';
-    const solutionFolder = path.join(root, solutionsRoot, solution.SolutionUniqueName);
+    const solutionFolder = path.join(getSolutionsRoot(root).absolutePath, solution.SolutionUniqueName);
     const workflowsDir = path.join(solutionFolder, 'Workflows');
 
     // Folder must exist; we don't synthesise a fresh solution layout here.

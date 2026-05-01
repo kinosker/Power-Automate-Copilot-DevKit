@@ -3,7 +3,7 @@ import * as path from 'path';
 import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
-import { assertGuid, assertSafeSolutionName } from '../pac/validation';
+import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { resolveFlowFile } from './uploadFlow';
 import { stashRemoteContent } from './remoteContent';
@@ -38,9 +38,7 @@ export async function openFlowDiff(
     }
 
     const root = workspaceRoot();
-    const solutionsRoot =
-        vscode.workspace.getConfiguration('flowplugin').get<string>('solutionsRoot') || 'solutions';
-    const solutionFolder = path.join(root, solutionsRoot, solution.SolutionUniqueName);
+    const solutionFolder = path.join(getSolutionsRoot(root).absolutePath, solution.SolutionUniqueName);
     const flowFile = await resolveFlowFile(solutionFolder, flow);
 
     const dvAuth = new DataverseAuth();
