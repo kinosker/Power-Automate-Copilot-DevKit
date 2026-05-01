@@ -18,6 +18,8 @@ import { DownloadSolutionTool } from './tools/downloadSolutionTool';
 import { UploadFlowTool } from './tools/uploadFlowTool';
 import { ViewFlowTool } from './tools/viewFlowTool';
 import { ListConnectionsTool } from './tools/listConnectionsTool';
+import { CreateConnectionsTool } from './tools/createConnectionsTool';
+import { openCreateConnections } from './commands/createConnections';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel('Power Automate');
@@ -127,6 +129,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.lm.registerTool(
                 'flowplugin_listConnections',
                 new ListConnectionsTool(auth, output)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                'flowplugin_createConnections',
+                new CreateConnectionsTool(auth)
             )
         );
     }
@@ -352,6 +360,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await openFlowInPortal(auth, node.flow);
         } catch (e: any) {
             vscode.window.showErrorMessage(`View in Power Automate failed: ${e.message ?? e}`);
+        }
+    });
+
+    register('flowplugin.createConnections', async () => {
+        try {
+            await openCreateConnections(auth);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Create connection failed: ${e.message ?? e}`);
         }
     });
 

@@ -107,6 +107,11 @@
         "command": "flowplugin.installSkill",
         "title": "Power Automate: Install Flow Skill into Workspace",
         "icon": "$(book)"
+      },
+      {
+        "command": "flowplugin.createConnections",
+        "title": "Power Automate: Create a Connection",
+        "icon": "$(plug)"
       }
     ],
     "menus": {
@@ -127,6 +132,11 @@
           "command": "flowplugin.selectEnvironment",
           "when": "view == flowplugin.tree && viewItem == environment",
           "group": "inline"
+        },
+        {
+          "command": "flowplugin.createConnections",
+          "when": "view == flowplugin.tree && viewItem == environment",
+          "group": "flowplugin@1"
         },
         {
           "command": "flowplugin.downloadSolution",
@@ -159,6 +169,16 @@
           "command": "flowplugin.refreshFlow",
           "when": "view == flowplugin.tree && viewItem == flow",
           "group": "flowplugin@2"
+        },
+        {
+          "command": "flowplugin.createConnections",
+          "when": "view == flowplugin.tree && viewItem == flow",
+          "group": "flowplugin@3"
+        },
+        {
+          "command": "flowplugin.createConnections",
+          "when": "view == flowplugin.tree && viewItem == pinnedSolution",
+          "group": "flowplugin@1"
         }
       ],
       "explorer/context": [
@@ -249,6 +269,20 @@
         "userDescription": "List your usable connection references in the selected Power Platform environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "listConnections",
+        "tags": ["flowplugin", "power-automate"],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "flowplugin_createConnections",
+        "displayName": "Create a Power Platform Connection",
+        "modelDescription": "Open the Power Automate 'Create a connection' page (the connector picker at /connections/available) for the currently selected Power Platform environment in the user's default browser. Use when the user asks to create, add, set up, make, or get a new connection / connector for the selected environment. Examples: 'create a connection', 'add a new connection', 'set up a connection', 'I need a new connector connection', 'open the create-connection page'. Takes no arguments. Do NOT use this tool to LIST existing connections (that is the listConnections tool), to create a connection REFERENCE inside a flow definition, to download or upload flows, or to open a specific flow in the portal (that is the viewFlow tool).",
+        "userDescription": "Open the Power Automate Create a Connection page for the selected environment.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "createConnections",
         "tags": ["flowplugin", "power-automate"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
