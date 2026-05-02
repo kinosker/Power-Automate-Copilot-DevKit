@@ -265,7 +265,18 @@ export class DataverseClient {
      */
     async listConnectionReferences(
         logicalNames?: string[],
-        opts?: { ownerUserId?: string; includeOwner?: boolean; usableOnly?: boolean }
+        opts?: {
+            ownerUserId?: string;
+            includeOwner?: boolean;
+            usableOnly?: boolean;
+            /**
+             * Restrict to references whose `modifiedon` is within the last N
+             * minutes (server-evaluated against `modifiedon ge <utc-iso>`).
+             * Useful for picking up connection references just created or
+             * touched (e.g. right after a connection was bound).
+             */
+            modifiedWithinMinutes?: number;
+        }
     ): Promise<{ logicalName: string; connectionId?: string; displayName?: string; ownerId?: string }[]> {
         // Minimal projection. `connectionid` is only needed when the caller
         // might care about unbound rows; with `usableOnly` it's redundant
@@ -300,6 +311,10 @@ export class DataverseClient {
         if (opts?.ownerUserId) {
             assertGuid(opts.ownerUserId, 'ownerUserId');
             filters.push(`_ownerid_value eq ${opts.ownerUserId}`);
+        }
+        if (typeof opts?.modifiedWithinMinutes === 'number' && opts.modifiedWithinMinutes > 0) {
+            const since = new Date(Date.now() - opts.modifiedWithinMinutes * 60_000).toISOString();
+            filters.push(`modifiedon ge ${since}`);
         }
         if (filters.length > 0) {
             url += `&$filter=${encodeURIComponent(filters.join(' and '))}`;
