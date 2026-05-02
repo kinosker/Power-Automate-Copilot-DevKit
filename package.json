@@ -265,7 +265,7 @@
       {
         "name": "flowplugin_listConnections",
         "displayName": "List Power Platform Connection References",
-        "modelDescription": "List Dataverse connection references in the currently selected Power Platform environment that the signed-in user can actually use in a flow — owned by the caller, bound to a real connection, and Active. Use when the user asks to list, show, or see their connection references / connections / refs. Examples: 'list my connection references', 'show connections', 'what connection references do I have'. Read-only — returns the list as text. Do NOT use this tool to modify, create, or delete connections.",
+        "modelDescription": "List Dataverse connection references in the currently selected Power Platform environment that the signed-in user can actually use in a flow — owned by the caller, bound to a real connection, and Active. Returns each reference's `connectorId` (e.g. `/providers/Microsoft.PowerApps/apis/shared_sharepointonline`) so callers can match references to a specific connector. Optional `connectorIdContains` filters results to references whose connectorId contains the given substring (case-insensitive); use this to find a reference for a specific connector (e.g. 'shared_sharepointonline', 'shared_office365', 'shared_commondataserviceforapps'). Optional `createdWithinMinutes` restricts results to references created in the last N minutes — use right after `createConnections` to pick up a reference the user just made (poll with 10, then 30). Use when the user asks to list, show, or see their connection references / connections / refs, or when resolving a connection reference for a flow edit. Examples: 'list my connection references', 'show my SharePoint connections', 'what connection references do I have for office365'. Read-only — returns the list as text. Do NOT use this tool to modify, create, or delete connections.",
         "userDescription": "List your usable connection references in the selected Power Platform environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "listConnections",
@@ -273,7 +273,16 @@
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
-          "properties": {}
+          "properties": {
+            "connectorIdContains": {
+              "type": "string",
+              "description": "OPTIONAL. Case-insensitive substring match against each reference's `connectorId` (e.g. `shared_sharepointonline`, `shared_office365`, `shared_commondataserviceforapps`). Use to find references for a specific connector."
+            },
+            "createdWithinMinutes": {
+              "type": "number",
+              "description": "OPTIONAL. Restrict to references whose `createdon` is within the last N minutes. Useful right after `createConnections` to pick up a reference the user just made — poll with 10, then 30."
+            }
+          }
         }
       },
       {

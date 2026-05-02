@@ -19,6 +19,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 - Hand-editing a `Workflows/*.json` file the designer produced
 - Repairing or generating a `runAfter` graph
 - Inserting, replacing, or rewiring an `OpenApiConnection` action
+- Adding a connector action that needs a connection reference not yet declared in `properties.connectionReferences`
 - Splitting a long flow into Scopes or extracting a child flow
 - Auditing a `Foreach` that mutates data
 - Composing or fixing a WDL expression (`@{…}` / `@expression(…)`)
@@ -31,6 +32,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 | `.github/copilot-instructions.md` | Document-level invariants: definition shape, naming, `runAfter`, failure handling, size budgets, connection references |
 | `.github/instructions/flow-json.instructions.md` | Per-operation structural rules — trigger and action required fields, Foreach concurrency, list-operation pagination, Teams recipient payload |
 | `.github/instructions/expressions.instructions.md` | Workflow Definition Language expression rules (null safety, `split`, `union`, SharePoint column shapes, casing) |
+| `.github/instructions/connection-references.instructions.md` | Resolution protocol for adding a connector action that needs a new connection reference (look up via `#listConnections`, create via `#createConnections`, attach via `#linkConnectionToSolution`) |
 
 ## Anchor patterns
 

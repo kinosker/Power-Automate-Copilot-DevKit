@@ -3,9 +3,22 @@ import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
 
-// Tool takes no input — it always lists usable connection references owned
-// by the signed-in user.
-type ListConnectionsInput = Record<string, never>;
+interface ListConnectionsInput {
+    /**
+     * Case-insensitive substring match against each reference's
+     * `connectorid` (e.g. `/providers/Microsoft.PowerApps/apis/shared_sharepointonline`).
+     * Pass the connector token (`shared_sharepointonline`,
+     * `shared_office365`, `shared_commondataserviceforapps`, etc.) to
+     * narrow the result to references that target a specific connector.
+     */
+    connectorIdContains?: string;
+    /**
+     * Restrict to references whose `createdon` is within the last N
+     * minutes. Useful right after `createConnections` opens the browser
+     * — poll with `10`, then `30`, to pick up the row the user just made.
+     */
+    createdWithinMinutes?: number;
+}
 
 /**
  * Language-model tool wrapper around `DataverseClient.listConnectionReferences()`.
@@ -15,6 +28,11 @@ type ListConnectionsInput = Record<string, never>;
  * populated) and Active (`statecode = 0`). All filtering is applied at the
  * Dataverse query so the model never sees unbound, disabled, or other-owner
  * rows.
+ *
+ * Optional inputs `connectorIdContains` and `createdWithinMinutes` support
+ * the connection-reference resolution protocol used when editing a flow:
+ * find an existing reference for the connector a new action needs, or pick
+ * up a reference the user just created via `createConnections`.
  */
 export class ListConnectionsTool implements vscode.LanguageModelTool<ListConnectionsInput> {
     constructor(
@@ -23,17 +41,27 @@ export class ListConnectionsTool implements vscode.LanguageModelTool<ListConnect
     ) {}
 
     async prepareInvocation(
-        _options: vscode.LanguageModelToolInvocationPrepareOptions<ListConnectionsInput>
+        options: vscode.LanguageModelToolInvocationPrepareOptions<ListConnectionsInput>
     ): Promise<vscode.PreparedToolInvocation> {
         const env = this.auth.getSelectedEnvironment();
         const label = env?.DisplayName || env?.FriendlyName || env?.EnvironmentName || 'the selected environment';
+        const filterBits: string[] = [];
+        const needle = options.input?.connectorIdContains?.trim();
+        if (needle) {
+            filterBits.push(`connectorId contains '${needle}'`);
+        }
+        const minutes = options.input?.createdWithinMinutes;
+        if (typeof minutes === 'number' && minutes > 0) {
+            filterBits.push(`created in last ${minutes} min`);
+        }
+        const suffix = filterBits.length > 0 ? ` (${filterBits.join(', ')})` : '';
         return {
-            invocationMessage: `Listing your usable connection references in ${label}…`
+            invocationMessage: `Listing your usable connection references in ${label}${suffix}…`
         };
     }
 
     async invoke(
-        _options: vscode.LanguageModelToolInvocationOptions<ListConnectionsInput>,
+        options: vscode.LanguageModelToolInvocationOptions<ListConnectionsInput>,
         _token: vscode.CancellationToken
     ): Promise<vscode.LanguageModelToolResult> {
         try {
@@ -47,27 +75,49 @@ export class ListConnectionsTool implements vscode.LanguageModelTool<ListConnect
             // Identify the caller so we can filter to their owned references.
             const me = await client.whoAmI();
 
+            const minutes = options.input?.createdWithinMinutes;
+            const createdWithinMinutes =
+                typeof minutes === 'number' && minutes > 0 ? minutes : undefined;
+
             // Server-side filter: bound (connectionid not null) AND active
-            // (statecode = 0) AND owned by the caller.
+            // (statecode = 0) AND owned by the caller. Optional recency
+            // filter goes through to the OData query.
             const refs = await client.listConnectionReferences(undefined, {
                 ownerUserId: me.userId,
-                usableOnly: true
+                usableOnly: true,
+                createdWithinMinutes
             });
 
+            // `connectorid` is post-filtered client-side (substring match,
+            // case-insensitive). The Dataverse column is a free-form string
+            // like `/providers/Microsoft.PowerApps/apis/shared_sharepointonline`.
+            const needle = options.input?.connectorIdContains?.trim().toLowerCase();
+            const filtered = needle
+                ? refs.filter(r => (r.connectorId ?? '').toLowerCase().includes(needle))
+                : refs;
+
             const envLabel = env.DisplayName ?? env.EnvironmentId;
-            if (refs.length === 0) {
-                return text(`No usable connection references found in '${envLabel}' that you own.`);
+            const filterDesc: string[] = [];
+            if (needle) { filterDesc.push(`connectorId contains '${options.input?.connectorIdContains}'`); }
+            if (createdWithinMinutes) { filterDesc.push(`created in last ${createdWithinMinutes} min`); }
+            const filterSuffix = filterDesc.length > 0 ? ` (filter: ${filterDesc.join(', ')})` : '';
+
+            if (filtered.length === 0) {
+                return text(
+                    `No usable connection references found in '${envLabel}' that you own${filterSuffix}.`
+                );
             }
 
-            refs.sort((a, b) => a.logicalName.localeCompare(b.logicalName));
+            filtered.sort((a, b) => a.logicalName.localeCompare(b.logicalName));
 
-            const lines = refs.map(r => {
+            const lines = filtered.map(r => {
                 const display = r.displayName ? ` (${r.displayName})` : '';
-                return `- ${r.logicalName}${display}`;
+                const connector = r.connectorId ? ` — connectorId: ${r.connectorId}` : '';
+                return `- ${r.logicalName}${display}${connector}`;
             });
 
             const summary =
-                `Usable connection references in '${envLabel}' owned by you: ${refs.length} total.\n` +
+                `Usable connection references in '${envLabel}' owned by you${filterSuffix}: ${filtered.length} total.\n` +
                 lines.join('\n');
             return text(summary);
         } catch (e: any) {

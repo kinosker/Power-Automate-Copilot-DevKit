@@ -74,6 +74,12 @@ the checks in `src/validation/flowLinter.ts`.
 - Unknown keys raise `connectionKeyDeclared`. When you add a new
   connector, declare or reuse a reference first, then point the action
   at it.
+- Before adding a connector action whose `connectionName` key is not
+  already declared in `properties.connectionReferences`, run the
+  resolution protocol in `.github/instructions/connection-references.instructions.md`
+  (check the flow → `#listConnections` by `connectorIdContains` →
+  `#createConnections` if nothing matches → `#linkConnectionToSolution`
+  to attach the chosen reference to the pinned solution).
 
 ## Idempotency
 
@@ -90,6 +96,10 @@ More granular rules live next to this file:
   concurrency, list-operation pagination, Teams recipient payload).
 - `.github/instructions/expressions.instructions.md` — Workflow
   Definition Language expression style and pitfalls.
+- `.github/instructions/connection-references.instructions.md` —
+  resolution protocol for adding a connector action whose connection
+  reference is not already declared (uses `#listConnections`,
+  `#createConnections`, `#linkConnectionToSolution`).
 
 ## Deep references (load on demand)
 

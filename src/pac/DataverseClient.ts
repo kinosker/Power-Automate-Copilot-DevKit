@@ -277,11 +277,14 @@ export class DataverseClient {
              */
             createdWithinMinutes?: number;
         }
-    ): Promise<{ logicalName: string; connectionId?: string; displayName?: string; ownerId?: string }[]> {
+    ): Promise<{ logicalName: string; connectionId?: string; displayName?: string; ownerId?: string; connectorId?: string }[]> {
         // Minimal projection. `connectionid` is only needed when the caller
         // might care about unbound rows; with `usableOnly` it's redundant
         // (filter already asserts it's non-null), so we drop it.
-        const selectFields = ['connectionreferencelogicalname', 'connectionreferencedisplayname'];
+        // `connectorid` (e.g. `/providers/Microsoft.PowerApps/apis/shared_sharepointonline`)
+        // is always selected so callers can match references against the
+        // connector a flow action needs.
+        const selectFields = ['connectionreferencelogicalname', 'connectionreferencedisplayname', 'connectorid'];
         if (!opts?.usableOnly) {
             selectFields.push('connectionid');
         }
@@ -328,7 +331,8 @@ export class DataverseClient {
             logicalName: String(r.connectionreferencelogicalname ?? ''),
             connectionId: r.connectionid ? String(r.connectionid) : undefined,
             displayName: r.connectionreferencedisplayname ? String(r.connectionreferencedisplayname) : undefined,
-            ownerId: r._ownerid_value ? String(r._ownerid_value) : undefined
+            ownerId: r._ownerid_value ? String(r._ownerid_value) : undefined,
+            connectorId: r.connectorid ? String(r.connectorid) : undefined
         }));
     }
 
