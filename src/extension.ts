@@ -135,7 +135,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.lm.registerTool(
                 'flowplugin_createConnections',
-                new CreateConnectionsTool(auth)
+                new CreateConnectionsTool(auth, output, pins)
             )
         );
         context.subscriptions.push(
@@ -370,9 +370,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.createConnections', async () => {
+    register('flowplugin.createConnections', async (node?: { solution?: SolutionInfo }) => {
         try {
-            await openCreateConnections(auth);
+            await openCreateConnections(auth, output, pins, node?.solution);
         } catch (e: any) {
             vscode.window.showErrorMessage(`Create connection failed: ${e.message ?? e}`);
         }

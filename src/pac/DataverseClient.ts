@@ -152,6 +152,23 @@ export class DataverseClient {
     }
 
     /**
+     * Resolve a solution's GUID from its unique name. Returns `undefined`
+     * when no row matches.
+     */
+    async getSolutionIdByUniqueName(solutionUniqueName: string): Promise<string | undefined> {
+        const escaped = solutionUniqueName.replace(/'/g, "''");
+        const url =
+            `${this.base}/solutions?$select=solutionid&$filter=` +
+            encodeURIComponent(`uniquename eq '${escaped}'`);
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(url)}`);
+        const res = await fetch(url, { method: 'GET', headers });
+        await throwIfError(res, 'GET solution');
+        const body = (await readJson(res)) as { value?: { solutionid?: string }[] };
+        return body.value?.[0]?.solutionid;
+    }
+
+    /**
      * List workflows that belong to the given solution by unique name.
      *
      * Workflows in Dataverse are tracked as *solution components*, not by a
@@ -167,24 +184,15 @@ export class DataverseClient {
         solutionUniqueName: string,
         opts?: { includeClientdata?: boolean }
     ): Promise<WorkflowSummary[]> {
-        const escaped = solutionUniqueName.replace(/'/g, "''");
-
         // Step 1: solution unique name → solutionid.
-        const solUrl =
-            `${this.base}/solutions?$select=solutionid&$filter=` +
-            encodeURIComponent(`uniquename eq '${escaped}'`);
-        const headers = await this.authHeaders();
-        this.output.appendLine(`> GET ${redactUrl(solUrl)}`);
-        const solRes = await fetch(solUrl, { method: 'GET', headers });
-        await throwIfError(solRes, 'GET solution');
-        const solBody = (await readJson(solRes)) as { value?: { solutionid?: string }[] };
-        const solutionId = solBody.value?.[0]?.solutionid;
+        const solutionId = await this.getSolutionIdByUniqueName(solutionUniqueName);
         if (!solutionId) {
             this.output.appendLine(`[workflows] solution '${solutionUniqueName}' not found.`);
             return [];
         }
 
         // Step 2: solutioncomponents → workflow GUIDs (componenttype 29 = Workflow).
+        const headers = await this.authHeaders();
         const compUrl =
             `${this.base}/solutioncomponents?$select=objectid` +
             `&$filter=${encodeURIComponent(`_solutionid_value eq ${solutionId} and componenttype eq 29`)}`;
