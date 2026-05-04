@@ -17,10 +17,7 @@
       "description": "In untrusted workspaces, workspace-scoped 'flowplugin.pacPath' and 'flowplugin.solutionsRoot' settings are ignored; user/global values are used instead."
     }
   },
-  "activationEvents": [
-    "onView:flowplugin.tree",
-    "onLanguage:json"
-  ],
+  "activationEvents": [],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
