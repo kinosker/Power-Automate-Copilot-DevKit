@@ -1,4 +1,4 @@
-# FlowPlugin — Workspace Instructions
+# Power Automate Copilot DevKit — Workspace Instructions
 
 This workspace contains unpacked Power Automate cloud flows. When you
 read, generate, or modify any file under a `Workflows/` folder, treat

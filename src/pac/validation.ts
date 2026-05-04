@@ -1,5 +1,5 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
+import { getTrustedConfigValue } from '../config';
 
 /** Allowed characters for Dataverse solution unique names: letters/digits/underscore. */
 const SOLUTION_NAME_RE = /^[A-Za-z0-9_]{1,128}$/;
@@ -35,16 +35,6 @@ export interface SolutionsRoot {
     relativePath: string;
     /** Absolute path guaranteed to be inside the workspace folder. */
     absolutePath: string;
-}
-
-function trustedConfigValue<T>(key: string, fallback: T): T {
-    const cfg = vscode.workspace.getConfiguration('flowplugin');
-    const inspect = cfg.inspect<T>(key);
-    let value = inspect?.globalValue ?? inspect?.defaultValue ?? fallback;
-    if (vscode.workspace.isTrusted) {
-        value = inspect?.workspaceFolderValue ?? inspect?.workspaceValue ?? value;
-    }
-    return value ?? fallback;
 }
 
 export function resolveWorkspaceRelativePath(
@@ -85,6 +75,6 @@ export function resolveWorkspaceRelativePath(
 }
 
 export function getSolutionsRoot(workspaceFolder: string): SolutionsRoot {
-    const configuredPath = trustedConfigValue<string>('solutionsRoot', 'solutions');
-    return resolveWorkspaceRelativePath(workspaceFolder, configuredPath, 'flowplugin.solutionsRoot');
+    const configuredPath = getTrustedConfigValue<string>('solutionsRoot', 'solutions');
+    return resolveWorkspaceRelativePath(workspaceFolder, configuredPath, 'powerAutomateCopilotDevKit.solutionsRoot');
 }

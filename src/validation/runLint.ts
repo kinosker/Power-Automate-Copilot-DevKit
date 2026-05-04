@@ -4,6 +4,7 @@ import * as fs from 'fs/promises';
 import { lintFlow, LintFinding, findingsToDiagnostics } from './flowLinter';
 import { ConnectionReferenceService } from '../pac/ConnectionReferenceService';
 import { getDiagnosticCollection } from './diagnostics';
+import { EXTENSION_DISPLAY_NAME } from '../constants';
 
 export interface LintRunResult {
     findings: LintFinding[];
@@ -62,7 +63,7 @@ export async function lintFlowFile(
             const range = new vscode.Range(d.range.startLine, d.range.startCol, d.range.endLine, d.range.endCol);
             const sev = d.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning;
             const out = new vscode.Diagnostic(range, d.message, sev);
-            out.source = 'flowplugin';
+            out.source = EXTENSION_DISPLAY_NAME;
             out.code = d.ruleId;
             return out;
         });

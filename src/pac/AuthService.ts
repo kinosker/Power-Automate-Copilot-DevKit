@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { PacCli } from './PacCli';
 import { assertSafeEnvironmentId } from './validation';
+import { legacyStateKey, PAC_AUTH_PROFILE_NAME, stateKey } from '../constants';
 
 export interface AuthProfile {
     Index?: number;
@@ -91,7 +92,8 @@ export function normalizeEnvList(data: unknown): OrgInfo[] {
     });
 }
 
-const SELECTED_ENV_KEY = 'flowplugin.selectedEnvironment';
+const SELECTED_ENV_KEY = stateKey('selectedEnvironment');
+const LEGACY_SELECTED_ENV_KEY = legacyStateKey('selectedEnvironment');
 
 export class AuthService {
     constructor(
@@ -110,14 +112,16 @@ export class AuthService {
             /* best effort; pac may have no profiles to clear */
         }
         await this.state.update(SELECTED_ENV_KEY, undefined);
+        await this.state.update(LEGACY_SELECTED_ENV_KEY, undefined);
         // `--name` makes the new profile easy to spot; pac defaults to a
         // browser flow when no device-code/cert flags are passed.
-        await this.pac.runOrThrow(['auth', 'create', '--name', 'flowplugin']);
+        await this.pac.runOrThrow(['auth', 'create', '--name', PAC_AUTH_PROFILE_NAME]);
     }
 
     async signOut(): Promise<void> {
         await this.pac.runOrThrow(['auth', 'clear']);
         await this.state.update(SELECTED_ENV_KEY, undefined);
+        await this.state.update(LEGACY_SELECTED_ENV_KEY, undefined);
     }
 
     async listProfiles(): Promise<AuthProfile[]> {
@@ -205,10 +209,11 @@ export class AuthService {
             await this.pac.runOrThrow(['org', 'select', '--environment', id]);
         }
         await this.state.update(SELECTED_ENV_KEY, env);
+        await this.state.update(LEGACY_SELECTED_ENV_KEY, undefined);
     }
 
     getSelectedEnvironment(): OrgInfo | undefined {
-        return this.state.get<OrgInfo>(SELECTED_ENV_KEY);
+        return this.state.get<OrgInfo>(SELECTED_ENV_KEY) ?? this.state.get<OrgInfo>(LEGACY_SELECTED_ENV_KEY);
     }
 }
 

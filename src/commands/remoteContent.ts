@@ -1,14 +1,15 @@
 import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
+import { EXTENSION_PREFIX } from '../constants';
 
 /**
- * In-memory store backing the `flowplugin-remote:` virtual document scheme.
+ * In-memory store backing the extension's virtual remote document scheme.
  * Used to diff a freshly fetched remote flow `clientdata` against the local
  * file on disk without persisting the remote copy anywhere on disk.
  */
 const remoteDocs = new Map<string, string>();
 
-export const REMOTE_SCHEME = 'flowplugin-remote';
+export const REMOTE_SCHEME = `${EXTENSION_PREFIX}-remote`;
 
 export function registerRemoteContentProvider(context: vscode.ExtensionContext): void {
     const provider: vscode.TextDocumentContentProvider = {
@@ -22,7 +23,7 @@ export function registerRemoteContentProvider(context: vscode.ExtensionContext):
 }
 
 /**
- * Stash a string under a virtual `flowplugin-remote:` URI and return that URI.
+ * Stash a string under a virtual remote URI and return that URI.
  * The label appears in tab titles. Content is held only in process memory.
  */
 export function stashRemoteContent(label: string, content: string): vscode.Uri {

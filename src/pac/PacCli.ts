@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { spawn, SpawnOptionsWithoutStdio } from 'child_process';
+import { getTrustedConfigValue } from '../config';
 
 /** Hard cap on captured stdout/stderr per invocation (defense against runaway output). */
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -34,16 +35,7 @@ export class PacCli {
      * cannot redirect us to an arbitrary binary.
      */
     private get pacPath(): string {
-        const cfg = vscode.workspace.getConfiguration('flowplugin');
-        const inspect = cfg.inspect<string>('pacPath');
-        let value = inspect?.globalValue ?? inspect?.defaultValue ?? 'pac';
-        if (vscode.workspace.isTrusted) {
-            value =
-                inspect?.workspaceFolderValue ??
-                inspect?.workspaceValue ??
-                value;
-        }
-        return value || 'pac';
+        return getTrustedConfigValue<string>('pacPath', 'pac') || 'pac';
     }
 
     /** Run a pac command, streaming output. Resolves on exit (any code). */

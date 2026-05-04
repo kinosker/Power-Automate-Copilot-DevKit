@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { assertSafeSolutionName } from './validation';
+import { legacyStateKey, stateKey } from '../constants';
 
-const KEY = 'flowplugin.pinnedSolutions';
+const KEY = stateKey('pinnedSolutions');
+const LEGACY_KEY = legacyStateKey('pinnedSolutions');
 
 /** Per-environment pinned solution for this workspace. */
 export interface PinRecord {
@@ -22,11 +24,12 @@ export class PinnedSolutionService {
     constructor(private readonly state: vscode.Memento) {}
 
     private read(): PinMap {
-        return this.state.get<PinMap>(KEY) ?? {};
+        return this.state.get<PinMap>(KEY) ?? this.state.get<PinMap>(LEGACY_KEY) ?? {};
     }
 
     private async write(map: PinMap): Promise<void> {
         await this.state.update(KEY, map);
+        await this.state.update(LEGACY_KEY, undefined);
     }
 
     get(environmentId: string | undefined): PinRecord | undefined {

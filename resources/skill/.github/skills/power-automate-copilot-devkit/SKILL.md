@@ -1,12 +1,13 @@
 ---
-name: flowplugin-flow-json
+name: power-automate-copilot-devkit-flow-json
 description: >
   Editing rules for unpacked Power Automate cloud-flow JSON (the files
   emitted by `pac solution unpack` under `Workflows/`). Reflects the
-  exact constraints enforced by the FlowPlugin linter and schema.
+  exact constraints enforced by the Power Automate Copilot DevKit linter
+  and schema.
 ---
 
-# FlowPlugin Flow-JSON Skill
+# Power Automate Copilot DevKit Flow-JSON Skill
 
 Scope: a flow definition file inside an unpacked Dataverse solution
 (`<solution>/Workflows/<flowname>.json`). Every rule below is also a
@@ -22,7 +23,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 - Adding a connector action that needs a connection reference not yet declared in `properties.connectionReferences`
 - Splitting a long flow into Scopes or extracting a child flow
 - Auditing a `Foreach` that mutates data
-- Composing or fixing a WDL expression (`@{…}` / `@expression(…)`)
+- Composing or fixing a WDL expression (`@{...}` / `@expression(...)`)
 - Repointing a flow at a different connection reference
 
 ## Where the rules live
@@ -34,7 +35,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 | `.github/instructions/expressions.instructions.md` | Workflow Definition Language expression rules (null safety, `split`, `union`, SharePoint column shapes, casing) |
 | `.github/instructions/connection-references.instructions.md` | Resolution protocol for adding a connector action that needs a new connection reference (look up via `#listConnections`, create via `#createConnections`, attach via `#linkConnectionToSolution`) |
 
-## Anchor patterns
+## Anchor Patterns
 
 - **Try block via `runAfter`** — there is no `try/catch` keyword; emulate
   it with a `Scope` plus a sibling `Scope` whose `runAfter` is
@@ -62,6 +63,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 These files are placed under `.github/` in the user's workspace. Copilot
 reads `copilot-instructions.md` for every chat turn in the workspace,
 and attaches each `*.instructions.md` file whose `applyTo` glob matches
-the file currently being edited. The FlowPlugin VSIX bundles the source
-copies under `resources/skill/`; the **Power Automate: Install Flow
-Skill into Workspace** command copies them into the active workspace.
+the file currently being edited. The Power Automate Copilot DevKit VSIX
+bundles the source copies under `resources/skill/`; the **Power Automate:
+Install Flow Skill into Workspace** command copies them into the active
+workspace.

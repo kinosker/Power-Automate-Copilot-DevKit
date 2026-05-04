@@ -21,9 +21,10 @@ import { ListConnectionsTool } from './tools/listConnectionsTool';
 import { CreateConnectionsTool } from './tools/createConnectionsTool';
 import { LinkConnectionToSolutionTool } from './tools/linkConnectionToSolutionTool';
 import { openCreateConnections } from './commands/createConnections';
+import { commandId, lmToolName, OUTPUT_CHANNEL_NAME, SKILL_SLUG, TREE_VIEW_ID } from './constants';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    const output = vscode.window.createOutputChannel('Power Automate');
+    const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
     context.subscriptions.push(output);
 
     const pac = new PacCli(output);
@@ -32,7 +33,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const tree = new FlowTreeProvider(pac, auth, pins, output);
 
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('flowplugin.tree', tree)
+        vscode.window.registerTreeDataProvider(TREE_VIEW_ID, tree)
     );
 
     // Diagnostics for flow validation; ensure cleanup on deactivate.
@@ -89,7 +90,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             flowsRoot = getSolutionsRoot(ws.uri.fsPath).relativePath.replace(/\\/g, '/');
         }
     } catch (e: any) {
-        output.appendLine(`[watcher] ignoring invalid flowplugin.solutionsRoot: ${e.message ?? e}`);
+        output.appendLine(`[watcher] ignoring invalid powerAutomateCopilotDevKit.solutionsRoot: ${e.message ?? e}`);
     }
     const flowWatcher = vscode.workspace.createFileSystemWatcher(
         `**/${flowsRoot}/*/Workflows/*.json`
@@ -133,52 +134,52 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (typeof vscode.lm?.registerTool === 'function') {
         context.subscriptions.push(
             vscode.lm.registerTool(
-                'flowplugin_downloadSolution',
+                lmToolName('downloadSolution'),
                 new DownloadSolutionTool(pac, tree, context.workspaceState, auth, pins, output)
             )
         );
         context.subscriptions.push(
             vscode.lm.registerTool(
-                'flowplugin_uploadFlow',
+                lmToolName('uploadFlow'),
                 new UploadFlowTool(auth, tree, pins, context.workspaceState, output)
             )
         );
         context.subscriptions.push(
             vscode.lm.registerTool(
-                'flowplugin_viewFlow',
+                lmToolName('viewFlow'),
                 new ViewFlowTool(auth, tree, pins)
             )
         );
         context.subscriptions.push(
             vscode.lm.registerTool(
-                'flowplugin_listConnections',
+                lmToolName('listConnections'),
                 new ListConnectionsTool(auth, output)
             )
         );
         context.subscriptions.push(
             vscode.lm.registerTool(
-                'flowplugin_createConnections',
+                lmToolName('createConnections'),
                 new CreateConnectionsTool(auth, output, pins)
             )
         );
         context.subscriptions.push(
             vscode.lm.registerTool(
-                'flowplugin_linkConnectionToSolution',
+                lmToolName('linkConnectionToSolution'),
                 new LinkConnectionToSolutionTool(auth, tree, pins, output)
             )
         );
     }
 
-    register('flowplugin.refresh', () => tree.refresh());
+    register(commandId('refresh'), () => tree.refresh());
 
-    register('flowplugin.validateFlow', async (uriOrNode?: vscode.Uri | { resourceUri?: vscode.Uri }) => {
+    register(commandId('validateFlow'), async (uriOrNode?: vscode.Uri | { resourceUri?: vscode.Uri }) => {
         const uri = uriOrNode instanceof vscode.Uri
             ? uriOrNode
             : (uriOrNode && 'resourceUri' in uriOrNode ? uriOrNode.resourceUri : undefined);
         await validateFlowCommand(uri);
     });
 
-    register('flowplugin.installSkill', async () => {
+    register(commandId('installSkill'), async () => {
         try {
             await installFlowSkill(context, output);
         } catch (e: any) {
@@ -188,13 +189,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.signIn', async () => {
+    register(commandId('signIn'), async () => {
         try {
             await auth.signIn();
             vscode.window.showInformationMessage('Signed in to Power Platform.');
             const picked = await pickAndSelectEnvironment(auth);
             if (picked?.EnvironmentId && !pins.get(picked.EnvironmentId)) {
-                await vscode.commands.executeCommand('flowplugin.pickSolution');
+                await vscode.commands.executeCommand(commandId('pickSolution'));
             }
         } catch (e: any) {
             vscode.window.showErrorMessage(`Sign-in failed: ${e.message ?? e}`);
@@ -203,7 +204,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.signOut', async () => {
+    register(commandId('signOut'), async () => {
         try {
             await auth.signOut();
             vscode.window.showInformationMessage('Signed out.');
@@ -214,14 +215,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.selectEnvironment', async () => {
+    register(commandId('selectEnvironment'), async () => {
         try {
             const picked = await pickAndSelectEnvironment(auth);
             // If no solution is pinned for the freshly picked environment,
             // chain straight into the solution picker so the user only takes
             // one action to get from "no env" to "ready to download".
             if (picked?.EnvironmentId && !pins.get(picked.EnvironmentId)) {
-                await vscode.commands.executeCommand('flowplugin.pickSolution');
+                await vscode.commands.executeCommand(commandId('pickSolution'));
             }
         } catch (e: any) {
             vscode.window.showErrorMessage(`Select environment failed: ${e.message ?? e}`);
@@ -230,7 +231,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.downloadSolution', async (node?: { solution?: SolutionInfo }) => {
+    register(commandId('downloadSolution'), async (node?: { solution?: SolutionInfo }) => {
         // Resolve target solution: explicit arg > current pin.
         let target = node?.solution;
         if (!target) {
@@ -263,7 +264,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.pickSolution', async () => {
+    register(commandId('pickSolution'), async () => {
         const env = auth.getSelectedEnvironment();
         if (!env?.EnvironmentId) {
             vscode.window.showErrorMessage('Select an environment first.');
@@ -323,7 +324,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 'Download'
             );
             if (downloadPick === 'Download') {
-                await vscode.commands.executeCommand('flowplugin.downloadSolution', {
+                await vscode.commands.executeCommand(commandId('downloadSolution'), {
                     solution: pick.solution
                 });
             }
@@ -334,7 +335,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.unpinSolution', async () => {
+    register(commandId('unpinSolution'), async () => {
         const env = auth.getSelectedEnvironment();
         if (!env?.EnvironmentId) {
             return;
@@ -355,7 +356,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         tree.refresh();
     });
 
-    register('flowplugin.uploadFlow', async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+    register(commandId('uploadFlow'), async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
         if (!node?.flow || !node.solution) {
             vscode.window.showErrorMessage('Run this command from a flow in the tree.');
             return;
@@ -369,7 +370,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.viewFlowDiff', async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+    register(commandId('viewFlowDiff'), async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
         if (!node?.flow || !node.solution) {
             vscode.window.showErrorMessage('Run this command from a flow in the tree.');
             return;
@@ -381,7 +382,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.viewFlowInPortal', async (node: { flow?: FlowInfo }) => {
+    register(commandId('viewFlowInPortal'), async (node: { flow?: FlowInfo }) => {
         if (!node?.flow) {
             vscode.window.showErrorMessage('Run this command from a flow in the tree.');
             return;
@@ -393,7 +394,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.createConnections', async (node?: { solution?: SolutionInfo }) => {
+    register(commandId('createConnections'), async (node?: { solution?: SolutionInfo }) => {
         const pick = await vscode.window.showInformationMessage(
             '1. Go to Solution page, Select New → More → Connection Reference.\n' +
             '2. Complete the required details, select the connector suggested by AI, ' +
@@ -411,7 +412,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.refreshFlow', async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+    register(commandId('refreshFlow'), async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
         if (!node?.flow || !node.solution) {
             vscode.window.showErrorMessage('Run this command from a flow in the tree.');
             return;
@@ -432,7 +433,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
-    register('flowplugin.openFlowDefinition', async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+    register(commandId('openFlowDefinition'), async (node: { flow?: FlowInfo; solution?: SolutionInfo }) => {
         if (!node?.flow || !node.solution) {
             return;
         }
@@ -504,7 +505,7 @@ async function promptInstallSkillIfMissing(
     const ws = vscode.workspace.workspaceFolders?.[0];
     if (!ws) { return; }
 
-    const sentinel = vscode.Uri.joinPath(ws.uri, '.github', 'skills', 'flowplugin');
+    const sentinel = vscode.Uri.joinPath(ws.uri, '.github', 'skills', SKILL_SLUG);
     try {
         await vscode.workspace.fs.stat(sentinel);
         return; // already installed

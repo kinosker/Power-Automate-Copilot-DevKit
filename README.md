@@ -1,4 +1,4 @@
-# Power Automate Flow ALM (VS Code extension)
+# Power Automate Copilot DevKit (VS Code extension)
 
 Download, edit, and re-upload Power Automate cloud flows as **unpacked Dataverse solutions**, powered by the Microsoft Power Platform CLI (`pac`).
 
@@ -27,10 +27,10 @@ Solutions are Microsoft's officially supported ALM container for cloud flows. Un
 
 | Key | Default | |
 |---|---|---|
-| `flowplugin.pacPath` | `pac` | Path to the CLI binary. |
-| `flowplugin.solutionsRoot` | `solutions` | Workspace-relative folder for unpacked solutions. |
-| `flowplugin.autoPublishOnImport` | `true` | Pass `--publish-changes true` on import. |
-| `flowplugin.packageType` | `Unmanaged` | `Unmanaged`, `Managed`, or `Both`. |
+| `powerAutomateCopilotDevKit.pacPath` | `pac` | Path to the CLI binary. |
+| `powerAutomateCopilotDevKit.solutionsRoot` | `solutions` | Workspace-relative folder for unpacked solutions. |
+| `powerAutomateCopilotDevKit.autoPublishOnUpload` | `true` | Publish the flow immediately after a successful upload. |
+| `powerAutomateCopilotDevKit.packageType` | `Unmanaged` | `Unmanaged`, `Managed`, or `Both`. |
 
 ## Build
 

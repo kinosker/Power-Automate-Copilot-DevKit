@@ -10,10 +10,8 @@ import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../pac/Flow
 import { hashFolder } from '../pac/folderHash';
 import { assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
-
-function cfg<T>(key: string, fallback: T): T {
-    return vscode.workspace.getConfiguration('flowplugin').get<T>(key) ?? fallback;
-}
+import { getConfigValue } from '../config';
+import { legacyStateKey, stateKey } from '../constants';
 
 function workspaceRoot(): string {
     const ws = vscode.workspace.workspaceFolders?.[0];
@@ -24,7 +22,11 @@ function workspaceRoot(): string {
 }
 
 function snapshotKey(uniqueName: string): string {
-    return `flowplugin.snapshot.${uniqueName}`;
+    return stateKey(`snapshot.${uniqueName}`);
+}
+
+function legacySnapshotKey(uniqueName: string): string {
+    return legacyStateKey(`snapshot.${uniqueName}`);
 }
 
 async function folderExists(p: string): Promise<boolean> {
@@ -46,13 +48,14 @@ export async function downloadSolution(
     assertSafeSolutionName(solution.SolutionUniqueName);
     const root = workspaceRoot();
     const solutionsRoot = getSolutionsRoot(root).absolutePath;
-    const packageType = cfg<string>('packageType', 'Unmanaged');
+    const packageType = getConfigValue<string>('packageType', 'Unmanaged');
     const targetFolder = path.join(solutionsRoot, solution.SolutionUniqueName);
 
     // If the folder already exists, check whether the user edited it since the
     // last download. If yes, confirm before overwriting.
     if (state && (await folderExists(targetFolder))) {
-        const saved = state.get<string>(snapshotKey(solution.SolutionUniqueName));
+        const saved = state.get<string>(snapshotKey(solution.SolutionUniqueName))
+            ?? state.get<string>(legacySnapshotKey(solution.SolutionUniqueName));
         const current = await hashFolder(targetFolder);
         if (current && saved && current !== saved) {
             const pick = await vscode.window.showWarningMessage(
@@ -77,7 +80,7 @@ export async function downloadSolution(
 
     // Per-call temp dir, mode 0700 on POSIX; on Windows the user's tmp ACL
     // already restricts other users, but mkdtemp gives us a unique path either way.
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'flowplugin-'));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'power-automate-copilot-devkit-'));
     try {
         await fs.chmod(tmpDir, 0o700).catch(() => { /* not supported on Windows */ });
     } catch { /* best-effort */ }
@@ -142,12 +145,13 @@ export async function downloadSolution(
     if (state) {
         const newHash = await hashFolder(targetFolder);
         await state.update(snapshotKey(solution.SolutionUniqueName), newHash);
+        await state.update(legacySnapshotKey(solution.SolutionUniqueName), undefined);
     }
 
     // Capture per-flow metadata (workflowid, modifiedon, statecode, ETag) for
     // safe-upload drift detection. Failure here is non-fatal: the upload path
     // will simply skip the drift check.
-    const driftEnabled = cfg<boolean>('driftDetection', true);
+    const driftEnabled = getConfigValue<boolean>('driftDetection', true);
     if (driftEnabled && auth) {
         const env = auth.getSelectedEnvironment();
         if (env?.EnvironmentUrl) {

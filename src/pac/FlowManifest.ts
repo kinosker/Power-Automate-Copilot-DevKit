@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { WorkflowSummary } from './DataverseClient';
+import { LEGACY_WORKSPACE_DATA_DIR, WORKSPACE_DATA_DIR } from '../constants';
 
 interface CachedManifest {
     mtimeMs: number;
@@ -8,7 +9,7 @@ interface CachedManifest {
     manifest: FlowManifest;
 }
 
-/** On-disk shape of `<workspaceRoot>/.flowplugin/manifest/<solution>.json`. */
+/** On-disk shape of `<workspaceRoot>/.power-automate-copilot-devkit/manifest/<solution>.json`. */
 export interface FlowManifest {
     /** Schema version for forward-compatibility. */
     version: 1;
@@ -31,7 +32,8 @@ export interface FlowManifestEntry {
     etag?: string;
 }
 
-const MANIFEST_DIR_REL = path.join('.flowplugin', 'manifest');
+const MANIFEST_DIR_REL = path.join(WORKSPACE_DATA_DIR, 'manifest');
+const LEGACY_MANIFEST_DIR_REL = path.join(LEGACY_WORKSPACE_DATA_DIR, 'manifest');
 const manifestCache = new Map<string, CachedManifest>();
 
 function manifestPath(workspaceRoot: string, solutionUniqueName: string): string {
@@ -43,11 +45,42 @@ function manifestPath(workspaceRoot: string, solutionUniqueName: string): string
     return path.join(workspaceRoot, MANIFEST_DIR_REL, `${solutionUniqueName}.json`);
 }
 
+function legacyManifestPath(workspaceRoot: string, solutionUniqueName: string): string {
+    return path.join(workspaceRoot, LEGACY_MANIFEST_DIR_REL, `${solutionUniqueName}.json`);
+}
+
+async function migrateLegacyFile(currentFile: string, legacyFile: string): Promise<void> {
+    try {
+        await fs.stat(currentFile);
+        return;
+    } catch { /* current file missing */ }
+    try {
+        const legacyStat = await fs.stat(legacyFile);
+        if (!legacyStat.isFile()) { return; }
+        await fs.mkdir(path.dirname(currentFile), { recursive: true });
+        await fs.copyFile(legacyFile, currentFile);
+    } catch { /* no legacy file or migration failed; callers fall back normally */ }
+}
+
+async function migrateLegacyDirectory(currentDir: string, legacyDir: string): Promise<void> {
+    try {
+        await fs.stat(currentDir);
+        return;
+    } catch { /* current dir missing */ }
+    try {
+        const legacyStat = await fs.stat(legacyDir);
+        if (!legacyStat.isDirectory()) { return; }
+        await fs.mkdir(path.dirname(currentDir), { recursive: true });
+        await fs.cp(legacyDir, currentDir, { recursive: true });
+    } catch { /* no legacy directory or migration failed */ }
+}
+
 export async function readFlowManifest(
     workspaceRoot: string,
     solutionUniqueName: string
 ): Promise<FlowManifest | undefined> {
     const file = manifestPath(workspaceRoot, solutionUniqueName);
+    await migrateLegacyFile(file, legacyManifestPath(workspaceRoot, solutionUniqueName));
     try {
         const stat = await fs.stat(file);
         if (!stat.isFile()) {
@@ -144,7 +177,7 @@ export async function upsertManifestEntry(
 }
 
 /**
- * Backups live under `<workspaceRoot>/.flowplugin/backups/<solution>/`.
+ * Backups live under `<workspaceRoot>/.power-automate-copilot-devkit/backups/<solution>/`.
  * Each backup is the raw remote `clientdata` re-fetched immediately before
  * the PATCH that overwrote it.
  */
@@ -159,7 +192,8 @@ export async function writeRemoteBackup(
     }
     const safeName = (flowName || 'flow').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80);
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const dir = path.join(workspaceRoot, '.flowplugin', 'backups', solutionUniqueName);
+    const dir = path.join(workspaceRoot, WORKSPACE_DATA_DIR, 'backups', solutionUniqueName);
+    await migrateLegacyDirectory(dir, path.join(workspaceRoot, LEGACY_WORKSPACE_DATA_DIR, 'backups', solutionUniqueName));
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, `${safeName}-${ts}.json`);
     await writeFileAtomic(file, clientdata);
@@ -181,7 +215,8 @@ export async function pruneFlowBackups(
         return 0;
     }
     const safeName = (flowName || 'flow').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80);
-    const dir = path.join(workspaceRoot, '.flowplugin', 'backups', solutionUniqueName);
+    const dir = path.join(workspaceRoot, WORKSPACE_DATA_DIR, 'backups', solutionUniqueName);
+    await migrateLegacyDirectory(dir, path.join(workspaceRoot, LEGACY_WORKSPACE_DATA_DIR, 'backups', solutionUniqueName));
     let entries: string[];
     try {
         entries = await fs.readdir(dir);
@@ -215,7 +250,7 @@ export async function pruneFlowBackups(
 /**
  * The "pristine baseline": a verbatim copy of the server's `clientdata` as
  * captured at download time, stored at
- * `<workspaceRoot>/.flowplugin/baseline/<solution>/<workflowid>.json`.
+ * `<workspaceRoot>/.power-automate-copilot-devkit/baseline/<solution>/<workflowid>.json`.
  *
  * Content-based ground truth for upload-time drift detection. Comparing
  * baseline against live cloud `clientdata` avoids the false-positive prompts
@@ -231,7 +266,17 @@ function baselinePath(workspaceRoot: string, solutionUniqueName: string, workflo
     }
     return path.join(
         workspaceRoot,
-        '.flowplugin',
+        WORKSPACE_DATA_DIR,
+        'baseline',
+        solutionUniqueName,
+        `${workflowId.toLowerCase()}.json`
+    );
+}
+
+function legacyBaselinePath(workspaceRoot: string, solutionUniqueName: string, workflowId: string): string {
+    return path.join(
+        workspaceRoot,
+        LEGACY_WORKSPACE_DATA_DIR,
         'baseline',
         solutionUniqueName,
         `${workflowId.toLowerCase()}.json`
@@ -245,6 +290,7 @@ export async function writeBaseline(
     clientdata: string
 ): Promise<void> {
     const file = baselinePath(workspaceRoot, solutionUniqueName, workflowId);
+    await migrateLegacyFile(file, legacyBaselinePath(workspaceRoot, solutionUniqueName, workflowId));
     await fs.mkdir(path.dirname(file), { recursive: true });
     await writeFileAtomic(file, clientdata);
 }
@@ -255,6 +301,7 @@ export async function readBaseline(
     workflowId: string
 ): Promise<string | undefined> {
     const file = baselinePath(workspaceRoot, solutionUniqueName, workflowId);
+    await migrateLegacyFile(file, legacyBaselinePath(workspaceRoot, solutionUniqueName, workflowId));
     try {
         return await fs.readFile(file, 'utf8');
     } catch {

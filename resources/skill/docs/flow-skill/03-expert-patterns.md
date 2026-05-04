@@ -2,7 +2,7 @@
 
 Architectural recipes for flows that outgrow a single Scope. Each
 pattern names the linter rules it interacts with so the assistant's
-suggestions stay aligned with FlowPlugin's diagnostics.
+suggestions stay aligned with Power Automate Copilot DevKit's diagnostics.
 
 ## Child flows
 
@@ -186,8 +186,8 @@ variables do it for everything else.
 - Every production flow lives **inside a Solution**, never as a
   "default" / "My flows" flow. Outside a solution, environment
   variables and connection references do not exist.
-- Pin a solution per workspace via FlowPlugin's
-  `flowplugin.pickSolution` so `pac solution unpack` and the upload
+- Pin a solution per workspace via Power Automate Copilot DevKit's
+  `powerAutomateCopilotDevKit.pickSolution` so `pac solution unpack` and the upload
   command target the same artefact.
 - Don't mix unmanaged and managed in the same workspace; the linter
   treats both as plain JSON, but the platform's deploy semantics

@@ -7,7 +7,7 @@ your tenant's licensing for stricter caps.
 
 ## Hard limits worth memorising
 
-| Limit | Value | FlowPlugin rule |
+| Limit | Value | Power Automate Copilot DevKit rule |
 |---|---|---|
 | Actions per flow | 250 | `actionLimit` warns at 200 |
 | Parameters per flow | 50 | `parameterLimit` warns at 40 |

@@ -20,10 +20,8 @@ import {
 } from '../pac/FlowManifest';
 import { clearRemoteContent, stashRemoteContent } from './remoteContent';
 import { refreshFlowFromServer } from './refreshFlow';
-
-function cfg<T>(key: string, fallback: T): T {
-    return vscode.workspace.getConfiguration('flowplugin').get<T>(key) ?? fallback;
-}
+import { getConfigValue, getExplicitConfigValue } from '../config';
+import { legacyStateKey, stateKey } from '../constants';
 
 function workspaceRoot(): string {
     const ws = vscode.workspace.workspaceFolders?.[0];
@@ -33,19 +31,21 @@ function workspaceRoot(): string {
     return ws.uri.fsPath;
 }
 
-/** True if the new `flowplugin.autoPublishOnUpload` is set, otherwise fall back to the legacy key. */
+/** True if the new autoPublishOnUpload setting is set, otherwise fall back to the legacy key. */
 function shouldAutoPublish(): boolean {
-    const c = vscode.workspace.getConfiguration('flowplugin');
-    const inspect = c.inspect<boolean>('autoPublishOnUpload');
-    const explicit =
-        inspect?.workspaceFolderValue ??
-        inspect?.workspaceValue ??
-        inspect?.globalValue;
+    const explicit = getExplicitConfigValue<boolean>('autoPublishOnUpload');
     if (typeof explicit === 'boolean') {
         return explicit;
     }
-    // Backward-compat read of the old key.
-    return c.get<boolean>('autoPublishOnImport') ?? true;
+    return getConfigValue<boolean>('autoPublishOnImport', true);
+}
+
+function snapshotKey(uniqueName: string): string {
+    return stateKey(`snapshot.${uniqueName}`);
+}
+
+function legacySnapshotKey(uniqueName: string): string {
+    return legacyStateKey(`snapshot.${uniqueName}`);
 }
 
 /** Locate the `<DisplayName>-<GUID>.json` file for the given flow inside the unpacked solution. */
@@ -109,14 +109,14 @@ export async function uploadFlow(
         throw new Error(`Flow has ${lint.errors} validation error(s). Fix them before uploading.\n${first}`);
     }
     if (lint.warnings > 0) {
-        const blockOnWarnings = cfg<boolean>('lint.blockOnWarnings', false);
+        const blockOnWarnings = getConfigValue<boolean>('lint.blockOnWarnings', false);
         const first = lint.findings.filter(f => f.severity === 'warning').slice(0, 5)
             .map(f => `• [${f.ruleId}] ${f.message}`).join('\n');
         for (const f of lint.findings) {
             output.appendLine(`[lint:${f.severity}] ${f.ruleId}: ${f.message} @ ${f.jsonPath.join('/')}`);
         }
         if (blockOnWarnings) {
-            throw new Error(`Flow has ${lint.warnings} warning(s) and 'flowplugin.lint.blockOnWarnings' is enabled.\n${first}`);
+            throw new Error(`Flow has ${lint.warnings} warning(s) and 'powerAutomateCopilotDevKit.lint.blockOnWarnings' is enabled.\n${first}`);
         }
         const pick = await vscode.window.showWarningMessage(
             `Flow has ${lint.warnings} validation warning(s). Upload anyway?\n${first}`,
@@ -132,7 +132,7 @@ export async function uploadFlow(
     const client = new DataverseClient(env.EnvironmentUrl, dvAuth, output);
 
     // A4b: probe live connection bindings for any connectionName the flow uses.
-    if (cfg<boolean>('checkConnectionsBeforeUpload', true)) {
+    if (getConfigValue<boolean>('checkConnectionsBeforeUpload', true)) {
         try {
             const usedKeys = extractConnectionKeys(text);
             if (usedKeys.length > 0) {
@@ -187,7 +187,7 @@ export async function uploadFlow(
     //   * back up the *current* remote clientdata before we overwrite it,
     //   * capture a fresh ETag for an If-Match conditional PATCH,
     //   * decide whether to flip the flow off around the update.
-    const driftEnabled = cfg<boolean>('driftDetection', true);
+    const driftEnabled = getConfigValue<boolean>('driftDetection', true);
     let live: Awaited<ReturnType<typeof client.getWorkflow>> | undefined;
     try {
         live = await client.getWorkflow(flow.WorkflowId!, [
@@ -256,7 +256,7 @@ export async function uploadFlow(
                 root, solution.SolutionUniqueName, live.name ?? label, live.clientdata
             );
             output.appendLine(`[safe-upload] backup written: ${backupFile}`);
-            const retain = cfg<number>('backupRetention', 10);
+            const retain = getConfigValue<number>('backupRetention', 10);
             const removed = await pruneFlowBackups(
                 root, solution.SolutionUniqueName, live.name ?? label, retain
             );
@@ -269,7 +269,7 @@ export async function uploadFlow(
     }
 
     // Dry-run gate: no network mutations beyond this point.
-    if (cfg<boolean>('dryRunUpload', false)) {
+    if (getConfigValue<boolean>('dryRunUpload', false)) {
         output.appendLine(`[safe-upload] dry-run: would PATCH ${text.length} bytes to flow ${flow.WorkflowId}.`);
         vscode.window.showInformationMessage(
             `Dry run: '${label}' validated and backed up. No upload was sent.`
@@ -277,7 +277,7 @@ export async function uploadFlow(
         return;
     }
 
-    const deactivateBefore = cfg<boolean>('deactivateBeforeUpload', true);
+    const deactivateBefore = getConfigValue<boolean>('deactivateBeforeUpload', true);
     const wasActive = live?.statecode === 1;
     const wasSuspended = live?.statecode === 2;
     let didDeactivate = false;
@@ -398,7 +398,8 @@ export async function uploadFlow(
     // last download". Without this, every post-upload download would prompt.
     if (state) {
         const newHash = await hashFolder(solutionFolder);
-        await state.update(`flowplugin.snapshot.${solution.SolutionUniqueName}`, newHash);
+        await state.update(snapshotKey(solution.SolutionUniqueName), newHash);
+        await state.update(legacySnapshotKey(solution.SolutionUniqueName), undefined);
     }
 
     vscode.window.showInformationMessage(`Flow '${label}' uploaded.`);

@@ -69,7 +69,7 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
         requested: string | undefined
     ): Promise<{ solution: SolutionInfo } | { error: string }> {
         // No explicit name → use the workspace's pinned solution if one exists.
-        // Mirrors the behavior of the `flowplugin.downloadSolution` command.
+        // Mirrors the behavior of the downloadSolution command.
         const trimmed = (requested?.trim()) || this.pinnedName();
         if (!trimmed) {
             return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName` (the unique name or friendly name).' };

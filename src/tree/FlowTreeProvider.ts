@@ -8,6 +8,8 @@ import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
 import { clientDataEquals, readBaseline, readFlowManifest } from '../pac/FlowManifest';
 import { getSolutionsRoot } from '../pac/validation';
+import { getConfigValue } from '../config';
+import { commandId, SKILL_SLUG } from '../constants';
 
 export interface SolutionInfo {
     SolutionUniqueName: string;
@@ -64,7 +66,7 @@ class PickSolutionPlaceholderNode extends vscode.TreeItem {
         this.contextValue = 'pickSolutionPlaceholder';
         this.iconPath = new vscode.ThemeIcon('list-selection');
         this.command = {
-            command: 'flowplugin.pickSolution',
+            command: commandId('pickSolution'),
             title: 'Select a solution'
         };
     }
@@ -99,7 +101,7 @@ class DownloadPlaceholderNode extends vscode.TreeItem {
         this.contextValue = 'downloadPlaceholder';
         this.iconPath = new vscode.ThemeIcon('cloud-download');
         this.command = {
-            command: 'flowplugin.downloadSolution',
+            command: commandId('downloadSolution'),
             title: 'Download solution',
             arguments: [{ solution }]
         };
@@ -165,7 +167,7 @@ class FlowDiffActionNode extends vscode.TreeItem {
             drift === 'changed' ? 'diff-modified' : 'diff'
         );
         this.command = {
-            command: 'flowplugin.viewFlowDiff',
+            command: commandId('viewFlowDiff'),
             title: 'View server changes',
             arguments: [{ flow, solution }]
         };
@@ -183,7 +185,7 @@ class FlowRefreshActionNode extends vscode.TreeItem {
         this.iconPath = new vscode.ThemeIcon('cloud-download');
         this.tooltip = 'Pull the latest server copy and overwrite the local flow file. Local edits to this flow are discarded.';
         this.command = {
-            command: 'flowplugin.refreshFlow',
+            command: commandId('refreshFlow'),
             title: 'Pull and discard local changes',
             arguments: [{ flow, solution }]
         };
@@ -213,7 +215,7 @@ class SkillInstallNode extends vscode.TreeItem {
         );
         this.tooltip = 'Installs guidance files under .github/ that GitHub Copilot uses when editing flow definitions in this workspace.';
         this.command = {
-            command: 'flowplugin.installSkill',
+            command: commandId('installSkill'),
             title: 'Install Copilot Skills for Power Automate'
         };
     }
@@ -379,7 +381,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 if (!(await this.auth.hasActiveProfile())) {
                     roots.push(
                         new MessageNode('Sign in to Power Automate…', 'sign-in', {
-                            command: 'flowplugin.signIn',
+                            command: commandId('signIn'),
                             title: 'Sign in to Power Automate'
                         })
                     );
@@ -388,7 +390,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     if (!env) {
                         roots.push(
                             new MessageNode('Select an environment…', 'cloud', {
-                                command: 'flowplugin.selectEnvironment',
+                                command: commandId('selectEnvironment'),
                                 title: 'Select an environment'
                             })
                         );
@@ -493,13 +495,13 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
 
     /**
      * True when a workspace is open and the bundled Copilot skill folder
-     * (`.github/skills/flowplugin`) is not present. Used to surface a
+        * (`.github/skills/power-automate-copilot-devkit`) is not present. Used to surface a
      * one-click install affordance at the top of the tree.
      */
     private async shouldOfferSkillInstall(): Promise<boolean> {
         const ws = vscode.workspace.workspaceFolders?.[0];
         if (!ws) { return false; }
-        const sentinel = path.join(ws.uri.fsPath, '.github', 'skills', 'flowplugin');
+        const sentinel = path.join(ws.uri.fsPath, '.github', 'skills', SKILL_SLUG);
         try {
             await fs.access(sentinel);
             return false;
@@ -554,9 +556,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         const inflight = this.driftLoading.get(solutionUniqueName);
         if (inflight) { return inflight; }
 
-        const driftEnabled = vscode.workspace
-            .getConfiguration('flowplugin')
-            .get<boolean>('driftDetection') ?? true;
+        const driftEnabled = getConfigValue<boolean>('driftDetection', true);
         if (!driftEnabled) {
             this.driftBySolution.set(solutionUniqueName, new Map());
             return;

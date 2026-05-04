@@ -20,7 +20,8 @@ function workspaceRoot(): string {
  * Re-fetch the live `clientdata` for `flow` and open VS Code's diff editor
  * comparing it against the local file on disk.
  *
- * The remote copy is held in process memory via the `flowplugin-remote:`
+ * The remote copy is held in process memory via the extension's virtual
+ * remote document scheme.
  * content provider — nothing is written to disk.
  */
 export async function openFlowDiff(

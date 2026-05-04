@@ -2,7 +2,7 @@
 
 Companion to `.github/copilot-instructions.md` (failure paths) and
 `.github/instructions/flow-json.instructions.md` (`runAfter` validity).
-Every pattern below is consistent with FlowPlugin's linter rules.
+Every pattern below is consistent with Power Automate Copilot DevKit's linter rules.
 
 ## What "error handling" actually means in WDL
 
@@ -18,7 +18,7 @@ sibling Scopes whose `runAfter` graph routes the catch only on
 `Failed` / `TimedOut` from the try.
 
 The four legal status values are `Succeeded`, `Failed`, `Skipped`,
-`TimedOut` (FlowPlugin rule: `runAfterStatus`). Anything else is
+`TimedOut` (Power Automate Copilot DevKit rule: `runAfterStatus`). Anything else is
 rejected.
 
 ## The minimum viable Try / Catch

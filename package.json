@@ -1,6 +1,6 @@
 {
-  "name": "flowplugin",
-  "displayName": "Power Automate Flow ALM",
+  "name": "power-automate-copilot-devkit",
+  "displayName": "Power Automate Copilot DevKit",
   "description": "Download, edit, and re-upload Power Automate cloud flows as unpacked solutions, powered by the Microsoft Power Platform CLI (pac).",
   "version": "0.1.0",
   "publisher": "flowplugin",
@@ -14,7 +14,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In untrusted workspaces, workspace-scoped 'flowplugin.pacPath' and 'flowplugin.solutionsRoot' settings are ignored; user/global values are used instead."
+      "description": "In untrusted workspaces, workspace-scoped 'powerAutomateCopilotDevKit.pacPath' and 'powerAutomateCopilotDevKit.solutionsRoot' settings are ignored; user/global values are used instead."
     }
   },
   "activationEvents": [],
@@ -22,16 +22,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "flowplugin",
+          "id": "powerAutomateCopilotDevKit",
           "title": "Power Automate",
           "icon": "$(zap)"
         }
       ]
     },
     "views": {
-      "flowplugin": [
+      "powerAutomateCopilotDevKit": [
         {
-          "id": "flowplugin.tree",
+          "id": "powerAutomateCopilotDevKit.tree",
           "name": "Flows",
           "icon": "$(zap)"
         }
@@ -39,74 +39,74 @@
     },
     "commands": [
       {
-        "command": "flowplugin.signIn",
+        "command": "powerAutomateCopilotDevKit.signIn",
         "title": "Power Automate: Sign In",
         "icon": "$(sign-in)"
       },
       {
-        "command": "flowplugin.signOut",
+        "command": "powerAutomateCopilotDevKit.signOut",
         "title": "Power Automate: Sign Out"
       },
       {
-        "command": "flowplugin.selectEnvironment",
+        "command": "powerAutomateCopilotDevKit.selectEnvironment",
         "title": "Power Automate: Select Environment"
       },
       {
-        "command": "flowplugin.refresh",
+        "command": "powerAutomateCopilotDevKit.refresh",
         "title": "Power Automate: Refresh",
         "icon": "$(refresh)"
       },
       {
-        "command": "flowplugin.downloadSolution",
+        "command": "powerAutomateCopilotDevKit.downloadSolution",
         "title": "Download Solution (Export + Unpack)",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "flowplugin.pickSolution",
+        "command": "powerAutomateCopilotDevKit.pickSolution",
         "title": "Power Automate: Select Solution",
         "icon": "$(list-selection)"
       },
       {
-        "command": "flowplugin.unpinSolution",
+        "command": "powerAutomateCopilotDevKit.unpinSolution",
         "title": "Power Automate: Unpin Solution",
         "icon": "$(unlock)"
       },
       {
-        "command": "flowplugin.uploadFlow",
+        "command": "powerAutomateCopilotDevKit.uploadFlow",
         "title": "Upload Flow",
         "icon": "$(cloud-upload)"
       },
       {
-        "command": "flowplugin.openFlowDefinition",
+        "command": "powerAutomateCopilotDevKit.openFlowDefinition",
         "title": "Open Flow Definition"
       },
       {
-        "command": "flowplugin.viewFlowInPortal",
+        "command": "powerAutomateCopilotDevKit.viewFlowInPortal",
         "title": "Power Automate: View Flow in Portal",
         "icon": "$(link-external)"
       },
       {
-        "command": "flowplugin.viewFlowDiff",
+        "command": "powerAutomateCopilotDevKit.viewFlowDiff",
         "title": "Power Automate: Compare Flow with Server",
         "icon": "$(diff)"
       },
       {
-        "command": "flowplugin.refreshFlow",
+        "command": "powerAutomateCopilotDevKit.refreshFlow",
         "title": "Power Automate: Pull Flow and Discard Local Changes",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "flowplugin.validateFlow",
+        "command": "powerAutomateCopilotDevKit.validateFlow",
         "title": "Power Automate: Validate Flow Definition",
         "icon": "$(check)"
       },
       {
-        "command": "flowplugin.installSkill",
+        "command": "powerAutomateCopilotDevKit.installSkill",
         "title": "Power Automate: Install Flow Skill into Workspace",
         "icon": "$(book)"
       },
       {
-        "command": "flowplugin.createConnections",
+        "command": "powerAutomateCopilotDevKit.createConnections",
         "title": "Power Automate: Create a Connection",
         "icon": "$(plug)"
       }
@@ -114,94 +114,94 @@
     "menus": {
       "view/title": [
         {
-          "command": "flowplugin.signIn",
-          "when": "view == flowplugin.tree",
+          "command": "powerAutomateCopilotDevKit.signIn",
+          "when": "view == powerAutomateCopilotDevKit.tree",
           "group": "navigation@1"
         },
         {
-          "command": "flowplugin.refresh",
-          "when": "view == flowplugin.tree",
+          "command": "powerAutomateCopilotDevKit.refresh",
+          "when": "view == powerAutomateCopilotDevKit.tree",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "flowplugin.selectEnvironment",
-          "when": "view == flowplugin.tree && viewItem == environment",
+          "command": "powerAutomateCopilotDevKit.selectEnvironment",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == environment",
           "group": "inline"
         },
         {
-          "command": "flowplugin.createConnections",
-          "when": "view == flowplugin.tree && viewItem == environment",
-          "group": "flowplugin@1"
+          "command": "powerAutomateCopilotDevKit.createConnections",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == environment",
+          "group": "powerAutomateCopilotDevKit@1"
         },
         {
-          "command": "flowplugin.downloadSolution",
-          "when": "view == flowplugin.tree && viewItem == pinnedSolution",
+          "command": "powerAutomateCopilotDevKit.downloadSolution",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == pinnedSolution",
           "group": "inline"
         },
         {
-          "command": "flowplugin.downloadSolution",
-          "when": "view == flowplugin.tree && viewItem == pinnedSolution"
+          "command": "powerAutomateCopilotDevKit.downloadSolution",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == pinnedSolution"
         },
         {
-          "command": "flowplugin.uploadFlow",
-          "when": "view == flowplugin.tree && viewItem == flow",
+          "command": "powerAutomateCopilotDevKit.uploadFlow",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
           "group": "inline"
         },
         {
-          "command": "flowplugin.uploadFlow",
-          "when": "view == flowplugin.tree && viewItem == flow"
+          "command": "powerAutomateCopilotDevKit.uploadFlow",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow"
         },
         {
-          "command": "flowplugin.openFlowDefinition",
-          "when": "view == flowplugin.tree && viewItem == flow"
+          "command": "powerAutomateCopilotDevKit.openFlowDefinition",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow"
         },
         {
-          "command": "flowplugin.viewFlowInPortal",
-          "when": "view == flowplugin.tree && viewItem == flow",
-          "group": "flowplugin@1"
+          "command": "powerAutomateCopilotDevKit.viewFlowInPortal",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
+          "group": "powerAutomateCopilotDevKit@1"
         },
         {
-          "command": "flowplugin.refreshFlow",
-          "when": "view == flowplugin.tree && viewItem == flow",
-          "group": "flowplugin@2"
+          "command": "powerAutomateCopilotDevKit.refreshFlow",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
+          "group": "powerAutomateCopilotDevKit@2"
         },
         {
-          "command": "flowplugin.createConnections",
-          "when": "view == flowplugin.tree && viewItem == flow",
-          "group": "flowplugin@3"
+          "command": "powerAutomateCopilotDevKit.createConnections",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
+          "group": "powerAutomateCopilotDevKit@3"
         },
         {
-          "command": "flowplugin.createConnections",
-          "when": "view == flowplugin.tree && viewItem == pinnedSolution",
-          "group": "flowplugin@1"
+          "command": "powerAutomateCopilotDevKit.createConnections",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == pinnedSolution",
+          "group": "powerAutomateCopilotDevKit@1"
         }
       ],
       "explorer/context": [
         {
-          "command": "flowplugin.validateFlow",
+          "command": "powerAutomateCopilotDevKit.validateFlow",
           "when": "resourceFilename =~ /\\.json$/ && resourcePath =~ /[\\\\/]Workflows[\\\\/]/",
-          "group": "flowplugin@1"
+          "group": "powerAutomateCopilotDevKit@1"
         }
       ],
       "editor/context": [
         {
-          "command": "flowplugin.validateFlow",
+          "command": "powerAutomateCopilotDevKit.validateFlow",
           "when": "resourceFilename =~ /\\.json$/ && resourcePath =~ /[\\\\/]Workflows[\\\\/]/",
-          "group": "flowplugin@1"
+          "group": "powerAutomateCopilotDevKit@1"
         }
       ]
     },
     "languageModelTools": [
       {
-        "name": "flowplugin_downloadSolution",
+        "name": "powerautomatecopilotdevkit_downloadSolution",
         "displayName": "Download Power Automate Solution",
         "modelDescription": "Download (pull) a Power Platform solution from the selected environment and unpack its flows into the workspace. Use when the user asks to download, pull, refresh, or sync down a solution. The `solutionName` argument is OPTIONAL: if the user does not specify a solution by name, omit the argument and the tool will use the solution already pinned to this workspace. Examples: 'download solution', 'pull the solution', 'download the contoso_core solution', 'refresh my solution from the environment'. Do NOT use this tool to upload or push local changes back to the server — that is the uploadFlow tool.",
         "userDescription": "Download a Power Platform solution and unpack its flows into the workspace.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "downloadSolution",
-        "tags": ["flowplugin", "power-automate"],
+        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -214,13 +214,13 @@
         }
       },
       {
-        "name": "flowplugin_uploadFlow",
+        "name": "powerautomatecopilotdevkit_uploadFlow",
         "displayName": "Upload Power Automate Flow",
         "modelDescription": "Upload (sync) a single Power Automate flow from the workspace back to Dataverse. Use when the user asks to upload, sync, push, or publish a flow. The tool detects server-side drift; if the server version changed since the last download, the user is asked whether to overwrite, pull and discard local changes, or view the diff first. Examples: 'upload my flow', 'sync the Approval flow', 'push the Notification flow'. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. The `flowName` argument is also OPTIONAL when the solution contains exactly one flow — omit it to upload that single flow without prompting. Do NOT use this tool to download or pull a solution — that is the downloadSolution tool.",
         "userDescription": "Upload a Power Automate flow from the workspace back to the selected environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "uploadFlow",
-        "tags": ["flowplugin", "power-automate"],
+        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -237,13 +237,13 @@
         }
       },
       {
-        "name": "flowplugin_viewFlow",
+        "name": "powerautomatecopilotdevkit_viewFlow",
         "displayName": "View Power Automate Flow in Portal",
         "modelDescription": "Open a Power Automate flow in the make.powerautomate.com web portal in the user's default browser. Use when the user asks to view, show, open, or see a flow in the browser / portal / Power Automate. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. The `flowName` argument is also OPTIONAL when the solution contains exactly one flow — omit it to view that single flow without prompting. Examples: 'view the flow', 'show me my flow', 'open the Approval flow in the portal', 'show the Notification flow in Power Automate'. Do NOT use this tool to upload, download, or modify flows.",
         "userDescription": "Open a Power Automate flow in the maker portal.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "viewFlow",
-        "tags": ["flowplugin", "power-automate"],
+        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -260,13 +260,13 @@
         }
       },
       {
-        "name": "flowplugin_listConnections",
+        "name": "powerautomatecopilotdevkit_listConnections",
         "displayName": "List Power Platform Connection References",
         "modelDescription": "List Dataverse connection references in the currently selected Power Platform environment that the signed-in user can actually use in a flow — owned by the caller, bound to a real connection, and Active. Returns each reference's `connectorId` (e.g. `/providers/Microsoft.PowerApps/apis/shared_sharepointonline`) so callers can match references to a specific connector. Optional `connectorIdContains` filters results to references whose connectorId contains the given substring (case-insensitive); use this to find a reference for a specific connector (e.g. 'shared_sharepointonline', 'shared_office365', 'shared_commondataserviceforapps'). Optional `createdWithinMinutes` restricts results to references created in the last N minutes — use right after `createConnections` to pick up a reference the user just made (poll with 10, then 30). Use when the user asks to list, show, or see their connection references / connections / refs, or when resolving a connection reference for a flow edit. Examples: 'list my connection references', 'show my SharePoint connections', 'what connection references do I have for office365'. Read-only — returns the list as text. Do NOT use this tool to modify, create, or delete connections.",
         "userDescription": "List your usable connection references in the selected Power Platform environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "listConnections",
-        "tags": ["flowplugin", "power-automate"],
+        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -283,13 +283,13 @@
         }
       },
       {
-        "name": "flowplugin_createConnections",
+        "name": "powerautomatecopilotdevkit_createConnections",
         "displayName": "Open Solution Page in Power Apps",
         "modelDescription": "Open the Power Apps maker solution page (https://make.powerapps.com/environments/<env>/solutions/<solution>) for the workspace's pinned Power Platform solution in the user's default browser. This is the in-context surface where the user adds new connections / connection references to the solution. Use when the user asks to create, add, set up, make, or get a new connection / connector for the pinned solution. Examples: 'create a connection', 'add a new connection', 'set up a connection', 'I need a new connector connection', 'open the create-connection page'. The OPTIONAL `requiredConnector` argument is the human-readable display name of the connector you are recommending (e.g. 'SharePoint', 'Office 365 Outlook', 'Microsoft Dataverse') — pass it whenever you have a specific connector in mind so the confirmation dialog tells the user exactly which connector to pick on the solution page. Targets the solution pinned to this workspace. Do NOT use this tool to LIST existing connections (that is the listConnections tool), to create a connection REFERENCE inside a flow definition, to download or upload flows, or to open a specific flow in the portal (that is the viewFlow tool).",
         "userDescription": "Open the Power Apps solution page for the pinned solution.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "createConnections",
-        "tags": ["flowplugin", "power-automate"],
+        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -302,13 +302,13 @@
         }
       },
       {
-        "name": "flowplugin_linkConnectionToSolution",
+        "name": "powerautomatecopilotdevkit_linkConnectionToSolution",
         "displayName": "Link Connection Reference to Solution",
         "modelDescription": "Attach an existing Dataverse connection reference (component type 10112) to a Power Platform solution via the AddSolutionComponent action so it is included in the next export. Use after the user has chosen a connection reference (e.g. from the listConnections tool) and wants to link it to the downloaded / pinned solution. The `connectionReferenceLogicalName` argument is REQUIRED and must be the logical name (not the display name) — exactly as returned by the listConnections tool. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. Examples: 'add this connection to my solution', 'link the SharePoint connection reference to the contoso_core solution', 'attach connection reference shared_office365_abc to the solution'. Idempotent: succeeds even if the reference is already a component of the solution. Do NOT use this tool to create a new connection or connection reference, to bind a connection reference to a different connection, or to upload / download flows.",
         "userDescription": "Add an existing connection reference to a Power Platform solution.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "linkConnectionToSolution",
-        "tags": ["flowplugin", "power-automate"],
+        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -327,30 +327,30 @@
       }
     ],
     "configuration": {
-      "title": "Power Automate Flow ALM",
+      "title": "Power Automate Copilot DevKit",
       "properties": {
-        "flowplugin.pacPath": {
+        "powerAutomateCopilotDevKit.pacPath": {
           "type": "string",
           "default": "pac",
           "description": "Path to the Microsoft Power Platform CLI executable."
         },
-        "flowplugin.solutionsRoot": {
+        "powerAutomateCopilotDevKit.solutionsRoot": {
           "type": "string",
           "default": "solutions",
           "description": "Workspace-relative folder where downloaded solutions are unpacked."
         },
-        "flowplugin.autoPublishOnUpload": {
+        "powerAutomateCopilotDevKit.autoPublishOnUpload": {
           "type": "boolean",
           "default": true,
           "description": "Publish the flow immediately after a successful upload."
         },
-        "flowplugin.autoPublishOnImport": {
+        "powerAutomateCopilotDevKit.autoPublishOnImport": {
           "type": "boolean",
           "default": true,
-          "description": "Deprecated. Use 'flowplugin.autoPublishOnUpload'. Read for backward compatibility only.",
-          "deprecationMessage": "Use 'flowplugin.autoPublishOnUpload' instead."
+          "description": "Deprecated. Use 'powerAutomateCopilotDevKit.autoPublishOnUpload'. Legacy 'flowplugin.autoPublishOnImport' is still read for backward compatibility.",
+          "deprecationMessage": "Use 'powerAutomateCopilotDevKit.autoPublishOnUpload' instead."
         },
-        "flowplugin.packageType": {
+        "powerAutomateCopilotDevKit.packageType": {
           "type": "string",
           "enum": [
             "Unmanaged",
@@ -360,33 +360,33 @@
           "default": "Unmanaged",
           "description": "Package type used by pac solution export/pack."
         },
-        "flowplugin.lint.blockOnWarnings": {
+        "powerAutomateCopilotDevKit.lint.blockOnWarnings": {
           "type": "boolean",
           "default": false,
           "description": "Treat lint warnings as errors and block uploads when any are present."
         },
-        "flowplugin.checkConnectionsBeforeUpload": {
+        "powerAutomateCopilotDevKit.checkConnectionsBeforeUpload": {
           "type": "boolean",
           "default": true,
           "description": "Before uploading a flow, query Dataverse to confirm each connection reference it uses is bound to an active connection in the target environment."
         },
-        "flowplugin.driftDetection": {
+        "powerAutomateCopilotDevKit.driftDetection": {
           "type": "boolean",
           "default": true,
           "description": "Capture per-flow metadata (modifiedon, ETag) at download time and compare against the live server state before upload. Prompts on remote drift."
         },
-        "flowplugin.deactivateBeforeUpload": {
+        "powerAutomateCopilotDevKit.deactivateBeforeUpload": {
           "type": "boolean",
           "default": true,
           "description": "Before patching the flow definition, deactivate the flow if it is currently Activated, then reactivate after the update succeeds. Avoids unintended trigger executions during the update window."
         },
-        "flowplugin.backupRetention": {
+        "powerAutomateCopilotDevKit.backupRetention": {
           "type": "number",
           "default": 10,
           "minimum": 0,
-          "description": "Number of timestamped pre-upload backups to keep per flow under '.flowplugin/backups/'. 0 keeps everything."
+          "description": "Number of timestamped pre-upload backups to keep per flow under '.power-automate-copilot-devkit/backups/'. 0 keeps everything."
         },
-        "flowplugin.dryRunUpload": {
+        "powerAutomateCopilotDevKit.dryRunUpload": {
           "type": "boolean",
           "default": false,
           "description": "When enabled, validate and back up the remote clientdata but do not send the PATCH. Useful for testing the safe-upload pipeline."
