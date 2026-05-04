@@ -226,6 +226,31 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
      */
     private driftBySolution = new Map<string, Map<string, 'changed' | 'unchanged'>>();
     private driftLoading = new Map<string, Promise<void>>();
+    /**
+     * Local file mtimes (epoch ms, per `Workflows/*.json` filename) captured
+     * the last time drift was computed for a given solution. Used by
+     * `invalidateDrift` to decide whether a file-watcher event represents a
+     * real change vs. a no-op save — if every current mtime is ≤ the
+     * recorded one, the cached drift result is still accurate and we skip
+     * the network round trip.
+     */
+    private driftMtimes = new Map<string, Map<string, number>>();
+    /**
+     * Lazily-built {@link DataverseClient} cache, keyed by environment URL.
+     * Reusing the same instance across drift runs preserves its internal
+     * caches (e.g. solution-unique-name → solutionid) so steady-state
+     * drift recompute only costs the bulk workflows query.
+     */
+    private dvClientByOrg = new Map<string, DataverseClient>();
+    private readonly dvAuth = new DataverseAuth();
+    /**
+     * Most recent `PinnedSolutionNode` instance returned to VS Code per
+     * solution. We need a stable reference to fire `onDidChangeTreeData`
+     * with — firing `undefined` would re-run `pac auth list` and
+     * `pac solution list` for the root and environment levels, which is
+     * wasteful when only the per-flow drift badges have changed.
+     */
+    private liveSolutionNode = new Map<string, PinnedSolutionNode>();
 
     constructor(
         private readonly pac: PacCli,
@@ -237,7 +262,19 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     refresh(): void {
         this.driftBySolution.clear();
         this.driftLoading.clear();
+        this.driftMtimes.clear();
+        this.liveSolutionNode.clear();
+        this.dvClientByOrg.clear();
         this._onDidChange.fire(undefined);
+    }
+
+    private getDvClient(orgUrl: string, output: vscode.OutputChannel): DataverseClient {
+        let client = this.dvClientByOrg.get(orgUrl);
+        if (!client) {
+            client = new DataverseClient(orgUrl, this.dvAuth, output);
+            this.dvClientByOrg.set(orgUrl, client);
+        }
+        return client;
     }
 
     /**
@@ -249,13 +286,59 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
      */
     invalidateDrift(solutionUniqueName?: string): void {
         if (solutionUniqueName) {
-            this.driftBySolution.delete(solutionUniqueName);
-            this.driftLoading.delete(solutionUniqueName);
+            // Best-effort: avoid invalidating when the saved file's mtime
+            // hasn't actually advanced past what we recorded last drift run
+            // (e.g. "Save" with no real changes, or the watcher firing on a
+            // touch). Repaint the subtree anyway so any UI state stays
+            // consistent, but keep the cached drift map.
+            void this.maybeInvalidateDrift(solutionUniqueName);
         } else {
             this.driftBySolution.clear();
             this.driftLoading.clear();
+            this.driftMtimes.clear();
+            this._onDidChange.fire(undefined);
         }
-        this._onDidChange.fire(undefined);
+    }
+
+    private async maybeInvalidateDrift(solutionUniqueName: string): Promise<void> {
+        const recorded = this.driftMtimes.get(solutionUniqueName);
+        const node = this.liveSolutionNode.get(solutionUniqueName);
+        if (!recorded || recorded.size === 0) {
+            // No baseline yet — fall through to full invalidation.
+            this.driftBySolution.delete(solutionUniqueName);
+            this.driftLoading.delete(solutionUniqueName);
+            this._onDidChange.fire(node);
+            return;
+        }
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        if (!ws) { return; }
+        const workflowsDir = path.join(
+            getSolutionsRoot(ws.uri.fsPath).absolutePath, solutionUniqueName, 'Workflows'
+        );
+        let dirty = false;
+        try {
+            const entries = await fs.readdir(workflowsDir);
+            // Any new file we didn't see at last drift = dirty.
+            for (const name of entries) {
+                if (!recorded.has(name)) { dirty = true; break; }
+                const stat = await fs.stat(path.join(workflowsDir, name)).catch(() => undefined);
+                if (stat && stat.mtimeMs > (recorded.get(name) ?? 0)) { dirty = true; break; }
+            }
+            // A file we recorded but is now gone = dirty.
+            if (!dirty) {
+                for (const name of recorded.keys()) {
+                    if (!entries.includes(name)) { dirty = true; break; }
+                }
+            }
+        } catch {
+            dirty = true;
+        }
+        if (dirty) {
+            this.driftBySolution.delete(solutionUniqueName);
+            this.driftLoading.delete(solutionUniqueName);
+            this._onDidChange.fire(node);
+        }
+        // No-op save — keep cached drift; no event needed since nothing changed.
     }
 
     getTreeItem(element: Node): vscode.TreeItem {
@@ -344,7 +427,9 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     /* listing failed; fall back to bare name */
                 }
                 const downloaded = await this.isDownloaded(pin.solutionUniqueName);
-                return [new PinnedSolutionNode(info, downloaded)];
+                const node = new PinnedSolutionNode(info, downloaded);
+                this.liveSolutionNode.set(pin.solutionUniqueName, node);
+                return [node];
             }
             if (element instanceof PinnedSolutionNode) {
                 const downloaded = await this.isDownloaded(element.solution.SolutionUniqueName);
@@ -488,8 +573,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     return;
                 }
                 const out = this.output ?? vscode.window.createOutputChannel('Power Automate');
-                const dvAuth = new DataverseAuth();
-                const client = new DataverseClient(env.EnvironmentUrl!, dvAuth, out);
+                const client = this.getDvClient(env.EnvironmentUrl!, out);
                 const live: WorkflowSummary[] = await client.listSolutionWorkflows(
                     solutionUniqueName,
                     { includeClientdata: true }
@@ -498,6 +582,11 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     getSolutionsRoot(ws.uri.fsPath).absolutePath, solutionUniqueName, 'Workflows'
                 );
                 const dirEntries = await fs.readdir(workflowsDir).catch(() => [] as string[]);
+                const mtimes = new Map<string, number>();
+                for (const name of dirEntries) {
+                    const stat = await fs.stat(path.join(workflowsDir, name)).catch(() => undefined);
+                    if (stat) { mtimes.set(name, stat.mtimeMs); }
+                }
                 const map = new Map<string, 'changed' | 'unchanged'>();
                 for (const w of live) {
                     if (!w.workflowid) { continue; }
@@ -526,6 +615,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     );
                 }
                 this.driftBySolution.set(solutionUniqueName, map);
+                this.driftMtimes.set(solutionUniqueName, mtimes);
             } catch (e: any) {
                 this.output?.appendLine(
                     `[tree-drift] failed for '${solutionUniqueName}': ${e.message ?? e}`
@@ -534,7 +624,12 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 this.driftBySolution.set(solutionUniqueName, new Map());
             } finally {
                 this.driftLoading.delete(solutionUniqueName);
-                this._onDidChange.fire(undefined);
+                // Fire the change at the pinned-solution subtree (not the
+                // root) so VS Code only re-fetches the flow list — avoiding
+                // a redundant `pac auth list` + `pac solution list` round
+                // trip just to repaint drift badges.
+                const node = this.liveSolutionNode.get(solutionUniqueName);
+                this._onDidChange.fire(node);
             }
         })();
         this.driftLoading.set(solutionUniqueName, promise);

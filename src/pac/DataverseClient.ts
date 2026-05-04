@@ -53,6 +53,14 @@ export class DataverseClient {
         private readonly output: vscode.OutputChannel
     ) {}
 
+    /**
+     * Cache of solution-unique-name → solutionid lookups. The mapping is
+     * effectively immutable (a solution's id never changes once created),
+     * so caching for the lifetime of the client is safe and saves one
+     * round trip on every drift recompute.
+     */
+    private readonly solutionIdCache = new Map<string, string>();
+
     private get base(): string {
         return normalizeOrgUrl(this.orgUrl) + API_PATH;
     }
@@ -156,6 +164,10 @@ export class DataverseClient {
      * when no row matches.
      */
     async getSolutionIdByUniqueName(solutionUniqueName: string): Promise<string | undefined> {
+        const cached = this.solutionIdCache.get(solutionUniqueName);
+        if (cached) {
+            return cached;
+        }
         const escaped = solutionUniqueName.replace(/'/g, "''");
         const url =
             `${this.base}/solutions?$select=solutionid&$filter=` +
@@ -165,7 +177,11 @@ export class DataverseClient {
         const res = await fetch(url, { method: 'GET', headers });
         await throwIfError(res, 'GET solution');
         const body = (await readJson(res)) as { value?: { solutionid?: string }[] };
-        return body.value?.[0]?.solutionid;
+        const id = body.value?.[0]?.solutionid;
+        if (id) {
+            this.solutionIdCache.set(solutionUniqueName, id);
+        }
+        return id;
     }
 
     /**
@@ -175,16 +191,18 @@ export class DataverseClient {
      * direct `_solutionid_value` link on the workflow row (the workflow's own
      * `solutionid` typically points at the Active/default solution). So the
      * correct lookup is:
-     *   1. Resolve the user solution by unique name → `solutionid`.
+     *   1. Resolve the user solution by unique name → `solutionid` (cached).
      *   2. Query `solutioncomponents` filtered to that solution and
      *      `componenttype eq 29` (= Workflow) → set of workflow GUIDs.
-     *   3. Fetch each workflow's metadata in parallel.
+     *   3. Fetch all workflow rows in a SINGLE `$filter=workflowid eq ... or ...`
+     *      query so the round-trip count is `1 (solutions, cached) + 1 + 1`
+     *      instead of `1 + 1 + N`.
      */
     async listSolutionWorkflows(
         solutionUniqueName: string,
         opts?: { includeClientdata?: boolean }
     ): Promise<WorkflowSummary[]> {
-        // Step 1: solution unique name → solutionid.
+        // Step 1: solution unique name → solutionid (cached).
         const solutionId = await this.getSolutionIdByUniqueName(solutionUniqueName);
         if (!solutionId) {
             this.output.appendLine(`[workflows] solution '${solutionUniqueName}' not found.`);
@@ -209,46 +227,47 @@ export class DataverseClient {
         }
         this.output.appendLine(`[workflows] solution has ${ids.length} workflow component(s); fetching metadata.`);
 
-        // Step 3: fetch metadata for each workflow id. Parallel but bounded.
-        const summaries: WorkflowSummary[] = [];
-        const concurrency = 6;
-        let cursor = 0;
+        // Step 3: one bulk GET against /workflows with `workflowid eq ... or ...`.
+        // Note: `@odata.etag` per row is still surfaced by Dataverse on list
+        // responses, so per-row ETags survive the collapse.
         const select: (keyof WorkflowRecord)[] = [
             'workflowid', 'name', 'modifiedon', 'statecode', 'statuscode'
         ];
         if (opts?.includeClientdata) {
             select.push('clientdata');
         }
-        const workers: Promise<void>[] = [];
-        for (let w = 0; w < concurrency; w++) {
-            workers.push((async () => {
-                while (true) {
-                    const i = cursor++;
-                    if (i >= ids.length) { return; }
-                    const id = ids[i];
-                    try {
-                        const rec = await this.getWorkflow(id, select);
-                        summaries.push({
-                            workflowid: rec.workflowid ?? id,
-                            name: rec.name,
-                            modifiedon: rec.modifiedon,
-                            statecode: rec.statecode,
-                            statuscode: rec.statuscode,
-                            etag: rec.etag,
-                            clientdata: rec.clientdata
-                        });
-                    } catch (e: any) {
-                        // Non-fatal: log and continue. The flow simply won't
-                        // get a manifest entry, which falls back to the
-                        // "no baseline" prompt the next time it's uploaded.
-                        this.output.appendLine(
-                            `[workflows] failed to fetch workflow ${id}: ${e.message ?? e}`
-                        );
-                    }
-                }
-            })());
+        // Dataverse caps `$filter` length around ~10K characters; chunk to keep
+        // each URL well under that even with hundreds of workflows.
+        const CHUNK = 50;
+        const summaries: WorkflowSummary[] = [];
+        for (let i = 0; i < ids.length; i += CHUNK) {
+            const slice = ids.slice(i, i + CHUNK);
+            const filter = slice.map(id => `workflowid eq ${id}`).join(' or ');
+            const url =
+                `${this.base}/workflows?$select=${select.join(',')}` +
+                `&$filter=${encodeURIComponent(filter)}`;
+            this.output.appendLine(`> GET ${redactUrl(url)}`);
+            const res = await fetch(url, { method: 'GET', headers });
+            await throwIfError(res, 'GET workflows');
+            const body = (await readJson(res)) as {
+                value?: (Record<string, unknown> & { '@odata.etag'?: string })[];
+            };
+            for (const row of body.value ?? []) {
+                const id = (row['workflowid'] as string | undefined) ?? '';
+                if (!id) { continue; }
+                summaries.push({
+                    workflowid: id,
+                    name: row['name'] as string | undefined,
+                    modifiedon: row['modifiedon'] as string | undefined,
+                    statecode: row['statecode'] as number | undefined,
+                    statuscode: row['statuscode'] as number | undefined,
+                    etag: typeof row['@odata.etag'] === 'string' ? row['@odata.etag'] : undefined,
+                    clientdata: opts?.includeClientdata
+                        ? (row['clientdata'] as string | undefined)
+                        : undefined
+                });
+            }
         }
-        await Promise.all(workers);
         return summaries;
     }
 
