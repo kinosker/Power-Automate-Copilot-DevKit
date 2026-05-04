@@ -1,6 +1,19 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
+interface ConnectionReferenceInput {
+    file: string;
+    mtimeMs: number;
+    size: number;
+}
+
+interface CachedConnectionReferences {
+    signature: string;
+    service: ConnectionReferenceService;
+}
+
+const serviceCache = new Map<string, CachedConnectionReferences>();
+
 /**
  * Reads connection-reference logical names from an unpacked solution folder.
  *
@@ -18,44 +31,46 @@ export class ConnectionReferenceService {
     }
 
     static async fromSolutionFolder(solutionFolder: string): Promise<ConnectionReferenceService> {
+        const cacheKey = path.resolve(solutionFolder);
+        const inputs = await findConnectionReferenceInputs(solutionFolder);
+        const signature = inputs
+            .map(input => `${input.file}:${input.mtimeMs}:${input.size}`)
+            .join('|');
+        const cached = serviceCache.get(cacheKey);
+        if (cached?.signature === signature) {
+            return cached.service;
+        }
+
         const keys = new Set<string>();
-        const files: string[] = [];
-
-        const customizations = path.join(solutionFolder, 'customizations.xml');
-        if (await fileExists(customizations)) {
-            files.push(customizations);
-        }
-
-        const refsDir = path.join(solutionFolder, 'connectionreferences');
-        try {
-            const entries = await fs.readdir(refsDir, { withFileTypes: true });
-            for (const e of entries) {
-                if (e.isFile() && e.name.toLowerCase().endsWith('.xml')) {
-                    files.push(path.join(refsDir, e.name));
-                }
-            }
-        } catch {
-            // dir may not exist; that's fine.
-        }
 
         const re = /connectionreferencelogicalname\s*=\s*"([^"]+)"|<connectionreferencelogicalname[^>]*>([^<]+)<\/connectionreferencelogicalname>/gi;
 
-        for (const f of files) {
+        for (const input of inputs) {
             let text: string;
             try {
-                text = await fs.readFile(f, 'utf8');
+                text = await fs.readFile(input.file, 'utf8');
             } catch {
                 continue;
             }
-            for (const m of text.matchAll(re)) {
-                const key = (m[1] ?? m[2] ?? '').trim();
+            for (const match of text.matchAll(re)) {
+                const key = (match[1] ?? match[2] ?? '').trim();
                 if (key) {
                     keys.add(key);
                 }
             }
         }
 
-        return new ConnectionReferenceService(keys);
+        const service = new ConnectionReferenceService(keys);
+        serviceCache.set(cacheKey, { signature, service });
+        return service;
+    }
+
+    static clearCache(solutionFolder?: string): void {
+        if (solutionFolder) {
+            serviceCache.delete(path.resolve(solutionFolder));
+            return;
+        }
+        serviceCache.clear();
     }
 
     get entries(): string[] {
@@ -75,11 +90,44 @@ export class ConnectionReferenceService {
     }
 }
 
-async function fileExists(p: string): Promise<boolean> {
+async function findConnectionReferenceInputs(solutionFolder: string): Promise<ConnectionReferenceInput[]> {
+    const inputs: ConnectionReferenceInput[] = [];
+
+    const customizations = path.join(solutionFolder, 'customizations.xml');
+    const customizationStat = await statFile(customizations);
+    if (customizationStat) {
+        inputs.push({
+            file: customizations,
+            mtimeMs: customizationStat.mtimeMs,
+            size: customizationStat.size
+        });
+    }
+
+    const refsDir = path.join(solutionFolder, 'connectionreferences');
     try {
-        const s = await fs.stat(p);
-        return s.isFile();
+        const entries = await fs.readdir(refsDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.xml')) {
+                continue;
+            }
+            const file = path.join(refsDir, entry.name);
+            const fileStat = await statFile(file);
+            if (fileStat) {
+                inputs.push({ file, mtimeMs: fileStat.mtimeMs, size: fileStat.size });
+            }
+        }
     } catch {
-        return false;
+        // dir may not exist; that's fine.
+    }
+
+    return inputs.sort((left, right) => left.file.localeCompare(right.file));
+}
+
+async function statFile(file: string): Promise<{ mtimeMs: number; size: number } | undefined> {
+    try {
+        const stat = await fs.stat(file);
+        return stat.isFile() ? { mtimeMs: stat.mtimeMs, size: stat.size } : undefined;
+    } catch {
+        return undefined;
     }
 }

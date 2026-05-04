@@ -43,16 +43,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerRemoteContentProvider(context);
 
     // Re-lint flow JSON files automatically on save so Problems stay in sync.
+    const lintDebounceMs = 750;
+    const pendingLint = new Map<string, NodeJS.Timeout>();
+    const scheduleLint = (fsPath: string) => {
+        const existing = pendingLint.get(fsPath);
+        if (existing) {
+            clearTimeout(existing);
+        }
+        const timer = setTimeout(() => {
+            pendingLint.delete(fsPath);
+            void (async () => {
+                try {
+                    await lintFlowFile(fsPath);
+                } catch (e: any) {
+                    output.appendLine(`[validate-on-save] ${fsPath}: ${e?.message ?? e}`);
+                }
+            })();
+        }, lintDebounceMs);
+        pendingLint.set(fsPath, timer);
+    };
+    context.subscriptions.push({
+        dispose: () => {
+            for (const timer of pendingLint.values()) {
+                clearTimeout(timer);
+            }
+            pendingLint.clear();
+        }
+    });
     context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument(async (doc) => {
+        vscode.workspace.onDidSaveTextDocument((doc) => {
             if (doc.uri.scheme !== 'file') { return; }
             const fsPath = doc.uri.fsPath;
             if (!/[\\/]Workflows[\\/]/i.test(fsPath) || !fsPath.toLowerCase().endsWith('.json')) { return; }
-            try {
-                await lintFlowFile(fsPath);
-            } catch (e: any) {
-                output.appendLine(`[validate-on-save] ${fsPath}: ${e?.message ?? e}`);
-            }
+            scheduleLint(fsPath);
         })
     );
 

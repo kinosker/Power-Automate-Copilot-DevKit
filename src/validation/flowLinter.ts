@@ -226,8 +226,8 @@ function runDefinitionDesignRules(
                 if (arr?.type !== 'array' || !arr.children) { continue; }
                 for (const item of arr.children) {
                     if (item.type === 'string') {
-                        const v = String(item.value);
-                        if (v === 'Failed' || v === 'TimedOut') { return true; }
+                        const v = String(item.value).toLowerCase();
+                        if (v === 'failed' || v === 'timedout') { return true; }
                     }
                 }
             }
@@ -360,10 +360,22 @@ function runRulesForAction(
                 for (const item of arr.children) {
                     if (item.type !== 'string') { continue; }
                     const v = String(item.value);
-                    if (v !== 'Succeeded' && v !== 'Failed' && v !== 'Skipped' && v !== 'TimedOut') {
+                    if (!isRunAfterStatus(v)) {
                         out.push(diag('runAfterStatus', 'error',
                             `Action '${a.name}' has invalid runAfter status '${v}' (allowed: Succeeded, Failed, Skipped, TimedOut).`,
                             [...a.path, 'runAfter', target], item));
+                    }
+
+                    function isRunAfterStatus(value: string): boolean {
+                        switch (value.toLowerCase()) {
+                            case 'succeeded':
+                            case 'failed':
+                            case 'skipped':
+                            case 'timedout':
+                                return true;
+                            default:
+                                return false;
+                        }
                     }
                 }
             }

@@ -26,6 +26,13 @@ export interface FlowInfo {
     SolutionId?: string;
 }
 
+function workflowIdFromFilename(filename: string): string | undefined {
+    const match = filename.match(
+        /-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.json$/
+    );
+    return match?.[1]?.toLowerCase();
+}
+
 type Node =
     | EnvironmentNode
     | PinnedSolutionNode
@@ -111,10 +118,10 @@ class FlowNode extends vscode.TreeItem {
             vscode.TreeItemCollapsibleState.Expanded
         );
         this.contextValue = 'flow';
-        // Color the lightning icon to reflect drift state at a glance:
+        // Reflect drift state at a glance:
         //   * green  — local file matches what's on the server
         //   * yellow — local and server differ (either side has changed)
-        //   * grey   — drift not yet computed (loading/unknown)
+        //   * spinner — drift not yet computed (loading/unknown)
         if (drift === 'changed') {
             this.iconPath = new vscode.ThemeIcon(
                 'zap',
@@ -133,10 +140,7 @@ class FlowNode extends vscode.TreeItem {
             this.description = flow.State;
             this.tooltip = `Local file matches the server copy.`;
         } else {
-            this.iconPath = new vscode.ThemeIcon(
-                'zap',
-                new vscode.ThemeColor('disabledForeground')
-            );
+            this.iconPath = new vscode.ThemeIcon('loading~spin');
             this.description = flow.State;
             this.tooltip = `Checking server for changes…`;
         }
@@ -318,6 +322,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         let dirty = false;
         try {
             const entries = await fs.readdir(workflowsDir);
+            const entrySet = new Set(entries);
             // Any new file we didn't see at last drift = dirty.
             for (const name of entries) {
                 if (!recorded.has(name)) { dirty = true; break; }
@@ -327,7 +332,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
             // A file we recorded but is now gone = dirty.
             if (!dirty) {
                 for (const name of recorded.keys()) {
-                    if (!entries.includes(name)) { dirty = true; break; }
+                    if (!entrySet.has(name)) { dirty = true; break; }
                 }
             }
         } catch {
@@ -582,19 +587,24 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     getSolutionsRoot(ws.uri.fsPath).absolutePath, solutionUniqueName, 'Workflows'
                 );
                 const dirEntries = await fs.readdir(workflowsDir).catch(() => [] as string[]);
+                const workflowFiles = dirEntries.filter(name => name.toLowerCase().endsWith('.json'));
+                const filenameByWorkflowId = new Map<string, string>();
+                for (const filename of workflowFiles) {
+                    const workflowId = workflowIdFromFilename(filename);
+                    if (workflowId) {
+                        filenameByWorkflowId.set(workflowId, filename);
+                    }
+                }
                 const mtimes = new Map<string, number>();
-                for (const name of dirEntries) {
+                for (const name of workflowFiles) {
                     const stat = await fs.stat(path.join(workflowsDir, name)).catch(() => undefined);
                     if (stat) { mtimes.set(name, stat.mtimeMs); }
                 }
                 const map = new Map<string, 'changed' | 'unchanged'>();
-                for (const w of live) {
-                    if (!w.workflowid) { continue; }
-                    const id = w.workflowid.toLowerCase();
-                    // Locate the local file by GUID suffix.
-                    const filename = dirEntries.find(
-                        f => f.toLowerCase().endsWith(`-${id}.json`)
-                    );
+                for (const workflow of live) {
+                    if (!workflow.workflowid) { continue; }
+                    const id = workflow.workflowid.toLowerCase();
+                    const filename = filenameByWorkflowId.get(id);
                     if (!filename) {
                         // No local file: drift is meaningless here.
                         map.set(id, 'changed');
@@ -611,7 +621,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                     }
                     map.set(
                         id,
-                        clientDataEquals(localText, w.clientdata) ? 'unchanged' : 'changed'
+                        clientDataEquals(localText, workflow.clientdata) ? 'unchanged' : 'changed'
                     );
                 }
                 this.driftBySolution.set(solutionUniqueName, map);

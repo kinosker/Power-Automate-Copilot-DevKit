@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import * as crypto from 'crypto';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient, PreconditionFailedError } from '../pac/DataverseClient';
 import { AuthService } from '../pac/AuthService';
 import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
+import { hashFolder } from '../pac/folderHash';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { lintFlowFile } from '../validation/runLint';
 import {
@@ -68,42 +68,6 @@ export async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): P
         );
     }
     return path.join(dir, match);
-}
-
-/** Hash a folder so we can refresh the post-download snapshot used by download.ts. */
-async function hashFolder(folder: string): Promise<string | undefined> {
-    const collect = async (dir: string): Promise<{ rel: string; full: string }[]> => {
-        const out: { rel: string; full: string }[] = [];
-        const items = await fs.readdir(dir, { withFileTypes: true });
-        for (const it of items) {
-            const full = path.join(dir, it.name);
-            if (it.isDirectory()) {
-                out.push(...(await collect(full)));
-            } else if (it.isFile()) {
-                out.push({ rel: path.relative(folder, full), full });
-            }
-        }
-        return out;
-    };
-    let entries: { rel: string; full: string }[];
-    try {
-        entries = await collect(folder);
-    } catch {
-        return undefined;
-    }
-    if (entries.length === 0) {
-        return undefined;
-    }
-    entries.sort((a, b) => a.rel.localeCompare(b.rel));
-    const hash = crypto.createHash('sha256');
-    for (const e of entries) {
-        const data = await fs.readFile(e.full);
-        hash.update(e.rel.replace(/\\/g, '/'));
-        hash.update('\0');
-        hash.update(data);
-        hash.update('\0');
-    }
-    return hash.digest('hex');
 }
 
 export async function uploadFlow(

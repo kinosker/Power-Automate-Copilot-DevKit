@@ -9,7 +9,7 @@
         "type": "array",
         "items": {
           "type": "string",
-          "enum": ["Succeeded", "Failed", "Skipped", "TimedOut"]
+          "pattern": "^([Ss][Uu][Cc][Cc][Ee][Ee][Dd][Ee][Dd]|[Ff][Aa][Ii][Ll][Ee][Dd]|[Ss][Kk][Ii][Pp][Pp][Ee][Dd]|[Tt][Ii][Mm][Ee][Dd][Oo][Uu][Tt])$"
         }
       }
     },

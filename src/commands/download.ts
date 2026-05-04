@@ -2,12 +2,12 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs/promises';
-import * as crypto from 'crypto';
 import { PacCli } from '../pac/PacCli';
 import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
 import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../pac/FlowManifest';
+import { hashFolder } from '../pac/folderHash';
 import { assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
 
@@ -25,43 +25,6 @@ function workspaceRoot(): string {
 
 function snapshotKey(uniqueName: string): string {
     return `flowplugin.snapshot.${uniqueName}`;
-}
-
-async function collectFiles(root: string, dir: string): Promise<{ rel: string; full: string }[]> {
-    const out: { rel: string; full: string }[] = [];
-    const items = await fs.readdir(dir, { withFileTypes: true });
-    for (const it of items) {
-        const full = path.join(dir, it.name);
-        if (it.isDirectory()) {
-            out.push(...(await collectFiles(root, full)));
-        } else if (it.isFile()) {
-            out.push({ rel: path.relative(root, full), full });
-        }
-    }
-    return out;
-}
-
-/** Recursively SHA-256 hash a folder's file tree. Returns undefined if missing/empty. */
-async function hashFolder(folder: string): Promise<string | undefined> {
-    let entries: { rel: string; full: string }[];
-    try {
-        entries = await collectFiles(folder, folder);
-    } catch {
-        return undefined;
-    }
-    if (entries.length === 0) {
-        return undefined;
-    }
-    entries.sort((a, b) => a.rel.localeCompare(b.rel));
-    const hash = crypto.createHash('sha256');
-    for (const e of entries) {
-        const data = await fs.readFile(e.full);
-        hash.update(e.rel.replace(/\\/g, '/'));
-        hash.update('\0');
-        hash.update(data);
-        hash.update('\0');
-    }
-    return hash.digest('hex');
 }
 
 async function folderExists(p: string): Promise<boolean> {

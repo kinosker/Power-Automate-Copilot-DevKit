@@ -2,6 +2,12 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { WorkflowSummary } from './DataverseClient';
 
+interface CachedManifest {
+    mtimeMs: number;
+    size: number;
+    manifest: FlowManifest;
+}
+
 /** On-disk shape of `<workspaceRoot>/.flowplugin/manifest/<solution>.json`. */
 export interface FlowManifest {
     /** Schema version for forward-compatibility. */
@@ -26,6 +32,7 @@ export interface FlowManifestEntry {
 }
 
 const MANIFEST_DIR_REL = path.join('.flowplugin', 'manifest');
+const manifestCache = new Map<string, CachedManifest>();
 
 function manifestPath(workspaceRoot: string, solutionUniqueName: string): string {
     // Solution unique names are validated by `assertSafeSolutionName` upstream,
@@ -42,13 +49,25 @@ export async function readFlowManifest(
 ): Promise<FlowManifest | undefined> {
     const file = manifestPath(workspaceRoot, solutionUniqueName);
     try {
+        const stat = await fs.stat(file);
+        if (!stat.isFile()) {
+            manifestCache.delete(file);
+            return undefined;
+        }
+        const cached = manifestCache.get(file);
+        if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+            return cached.manifest;
+        }
         const text = await fs.readFile(file, 'utf8');
         const parsed = JSON.parse(text) as FlowManifest;
         if (parsed && parsed.version === 1 && typeof parsed.flows === 'object') {
+            manifestCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, manifest: parsed });
             return parsed;
         }
+        manifestCache.delete(file);
         return undefined;
     } catch {
+        manifestCache.delete(file);
         return undefined;
     }
 }
@@ -59,7 +78,8 @@ export async function writeFlowManifest(
 ): Promise<void> {
     const file = manifestPath(workspaceRoot, manifest.solution);
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify(manifest, null, 2), 'utf8');
+    await writeFileAtomic(file, JSON.stringify(manifest, null, 2));
+    await updateManifestCache(file, manifest);
 }
 
 /** Build a fresh manifest from a list of workflow summaries. */
@@ -142,7 +162,7 @@ export async function writeRemoteBackup(
     const dir = path.join(workspaceRoot, '.flowplugin', 'backups', solutionUniqueName);
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, `${safeName}-${ts}.json`);
-    await fs.writeFile(file, clientdata, 'utf8');
+    await writeFileAtomic(file, clientdata);
     return file;
 }
 
@@ -226,7 +246,7 @@ export async function writeBaseline(
 ): Promise<void> {
     const file = baselinePath(workspaceRoot, solutionUniqueName, workflowId);
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, clientdata, 'utf8');
+    await writeFileAtomic(file, clientdata);
 }
 
 export async function readBaseline(
@@ -259,6 +279,34 @@ export function clientDataEquals(a: string | undefined, b: string | undefined): 
 
 function canonicalJson(value: unknown): string {
     return JSON.stringify(sortKeys(value));
+}
+
+async function writeFileAtomic(file: string, content: string): Promise<void> {
+    const dir = path.dirname(file);
+    const temp = path.join(
+        dir,
+        `.${path.basename(file)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+    );
+    try {
+        await fs.writeFile(temp, content, 'utf8');
+        await fs.rename(temp, file);
+    } catch (e) {
+        await fs.rm(temp, { force: true }).catch(() => { /* best-effort cleanup */ });
+        throw e;
+    }
+}
+
+async function updateManifestCache(file: string, manifest: FlowManifest): Promise<void> {
+    try {
+        const stat = await fs.stat(file);
+        if (stat.isFile()) {
+            manifestCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, manifest });
+            return;
+        }
+    } catch {
+        // fall through to cache invalidation
+    }
+    manifestCache.delete(file);
 }
 
 function sortKeys(value: unknown): unknown {
