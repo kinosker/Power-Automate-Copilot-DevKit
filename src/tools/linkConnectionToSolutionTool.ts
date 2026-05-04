@@ -43,9 +43,8 @@ export class LinkConnectionToSolutionTool
             confirmationMessages: {
                 title: 'Add connection reference to solution',
                 message: new vscode.MarkdownString(
-                    `This will attach the connection reference **${ref}** as a component of ` +
-                    `solution **${sol}** in the selected Power Platform environment so it ships ` +
-                    `with the next export. The reference itself is not modified.`
+                    `Do you want to link **${ref}** as a component of ` +
+                    `solution **${sol}** ?`
                 )
             }
         };

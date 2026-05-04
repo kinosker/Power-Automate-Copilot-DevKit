@@ -371,6 +371,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
 
     register('flowplugin.createConnections', async (node?: { solution?: SolutionInfo }) => {
+        const pick = await vscode.window.showInformationMessage(
+            '1. Go to Solution page, Select New → More → Connection Reference.\n' +
+            '2. Complete the required details, select the connector suggested by AI, ' +
+            'and add a connection to create the connection reference.\n' +
+            '3. Once the connection reference is created, please let me know.\n\n' +
+            'Would you like me to open the Solution page for you now?',
+            { modal: true },
+            'Yes'
+        );
+        if (pick !== 'Yes') { return; }
         try {
             await openCreateConnections(auth, output, pins, node?.solution);
         } catch (e: any) {
