@@ -3,7 +3,7 @@
   "displayName": "Power Automate Copilot DevKit",
   "description": "Download, edit, and re-upload Power Automate cloud flows as unpacked solutions, powered by the Microsoft Power Platform CLI (pac).",
   "version": "0.1.0",
-  "publisher": "flowplugin",
+  "publisher": "kinosker",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -201,7 +201,11 @@
         "userDescription": "Download a Power Platform solution and unpack its flows into the workspace.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "downloadSolution",
-        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -220,7 +224,11 @@
         "userDescription": "Upload a Power Automate flow from the workspace back to the selected environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "uploadFlow",
-        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -243,7 +251,11 @@
         "userDescription": "Open a Power Automate flow in the maker portal.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "viewFlow",
-        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -266,7 +278,11 @@
         "userDescription": "List your usable connection references in the selected Power Platform environment.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "listConnections",
-        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -289,7 +305,11 @@
         "userDescription": "Open the Power Apps solution page for the pinned solution.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "createConnections",
-        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -308,7 +328,11 @@
         "userDescription": "Add an existing connection reference to a Power Platform solution.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "linkConnectionToSolution",
-        "tags": ["power-automate-copilot-devkit", "power-automate", "github-copilot"],
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
         "when": "workspaceFolderCount > 0",
         "inputSchema": {
           "type": "object",
@@ -322,7 +346,9 @@
               "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution to attach the reference to. Omit to use the solution pinned to this workspace."
             }
           },
-          "required": ["connectionReferenceLogicalName"]
+          "required": [
+            "connectionReferenceLogicalName"
+          ]
         }
       }
     ],
@@ -410,6 +436,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0"
   },
