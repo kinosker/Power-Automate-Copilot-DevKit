@@ -4,6 +4,11 @@
   "description": "Download, edit, and re-upload Power Automate cloud flows as unpacked solutions, powered by the Microsoft Power Platform CLI (pac).",
   "version": "0.1.0",
   "publisher": "kinosker",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kinosker/Power-Automate-Copilot-DevKit.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
