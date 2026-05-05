@@ -81,6 +81,14 @@ the checks in `src/validation/flowLinter.ts`.
   `#createConnections` if nothing matches → `#linkConnectionToSolution`
   to attach the chosen reference to the pinned solution).
 
+## Tool safety
+
+- `#uploadFlow` pushes local flow JSON back to Dataverse. Always ask the
+  user for explicit permission before invoking it, even when the user has
+  asked for a broader sync/publish task or the target solution contains
+  exactly one flow. State the flow and solution that will be uploaded, and
+  wait for the user to confirm.
+
 ## Idempotency
 
 - Write actions can run more than once because the runtime retries on

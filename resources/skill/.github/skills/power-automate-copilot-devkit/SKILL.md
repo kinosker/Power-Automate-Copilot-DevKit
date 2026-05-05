@@ -37,6 +37,10 @@ so the assistant's suggestions and the extension's diagnostics agree.
 
 ## Anchor Patterns
 
+- **Upload requires explicit permission** — `#uploadFlow` pushes local
+  flow JSON back to Dataverse. Always ask the user for permission before
+  invoking it, naming the flow and solution that will be uploaded, and
+  wait for the user's confirmation.
 - **Try block via `runAfter`** — there is no `try/catch` keyword; emulate
   it with a `Scope` plus a sibling `Scope` whose `runAfter` is
   `{ "<TryScope>": ["Failed", "TimedOut"] }`. Inspect failures inside the
