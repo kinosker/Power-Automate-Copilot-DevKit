@@ -94,6 +94,7 @@ export function normalizeEnvList(data: unknown): OrgInfo[] {
 
 const SELECTED_ENV_KEY = stateKey('selectedEnvironment');
 const LEGACY_SELECTED_ENV_KEY = legacyStateKey('selectedEnvironment');
+const SIGNED_OUT_KEY = stateKey('signedOut');
 
 export class AuthService {
     constructor(
@@ -116,12 +117,14 @@ export class AuthService {
         // `--name` makes the new profile easy to spot; pac defaults to a
         // browser flow when no device-code/cert flags are passed.
         await this.pac.runOrThrow(['auth', 'create', '--name', PAC_AUTH_PROFILE_NAME]);
+        await this.state.update(SIGNED_OUT_KEY, false);
     }
 
     async signOut(): Promise<void> {
         await this.pac.runOrThrow(['auth', 'clear']);
         await this.state.update(SELECTED_ENV_KEY, undefined);
         await this.state.update(LEGACY_SELECTED_ENV_KEY, undefined);
+        await this.state.update(SIGNED_OUT_KEY, true);
     }
 
     async listProfiles(): Promise<AuthProfile[]> {
@@ -139,6 +142,9 @@ export class AuthService {
     }
 
     async hasActiveProfile(): Promise<boolean> {
+        if (this.state.get<boolean>(SIGNED_OUT_KEY)) {
+            return false;
+        }
         const profiles = await this.listProfiles();
         if (profiles.some(p => p.Active)) {
             return true;
@@ -149,6 +155,7 @@ export class AuthService {
     }
 
     async listEnvironments(): Promise<OrgInfo[]> {
+        await this.requireSignedIn('Sign in to Power Platform before selecting an environment.');
         // pac CLI surface has shifted across versions:
         //   - older builds: `pac admin list --json`
         //   - 2.6.x:        `pac env list --json`
@@ -185,6 +192,7 @@ export class AuthService {
     }
 
     async selectEnvironment(env: OrgInfo): Promise<void> {
+        await this.requireSignedIn('Sign in to Power Platform before selecting an environment.');
         // Prefer the real GUID when pac surfaces it. Across CLI versions this
         // can appear under different keys, and `EnvironmentIdentifier` is
         // sometimes a nested object — only accept string values.
@@ -214,6 +222,12 @@ export class AuthService {
 
     getSelectedEnvironment(): OrgInfo | undefined {
         return this.state.get<OrgInfo>(SELECTED_ENV_KEY) ?? this.state.get<OrgInfo>(LEGACY_SELECTED_ENV_KEY);
+    }
+
+    private async requireSignedIn(message: string): Promise<void> {
+        if (!(await this.hasActiveProfile())) {
+            throw new Error(message);
+        }
     }
 }
 

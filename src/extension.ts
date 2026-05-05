@@ -460,6 +460,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | undefined> {
+    if (!(await auth.hasActiveProfile())) {
+        const signIn = await vscode.window.showInformationMessage(
+            'Sign in to Power Platform before selecting an environment.',
+            'Sign In'
+        );
+        if (signIn !== 'Sign In') {
+            return undefined;
+        }
+        await auth.signIn();
+    }
     const envs = await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
