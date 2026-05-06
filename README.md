@@ -1,6 +1,9 @@
 # Power Automate Copilot DevKit
 
-Power Automate Copilot DevKit is a VS Code extension for editing Power Automate cloud flows as local JSON. It downloads flows from a Power Platform solution, lets you edit them manually or with GitHub Copilot (GHCP), validates the result, and uploads the flow back with drift checks and safeguards.
+Power Automate Copilot DevKit brings Power Automate cloud flow editing into VS Code, with guardrails for working safely against real Dataverse solutions.
+
+- Download and edit flows locally as readable JSON, then validate, compare, and upload changes back with drift checks and backups.
+- Install bundled GitHub Copilot (GHCP) skills so Copilot can help edit flow JSON, expressions, error handling, and performance patterns directly in your workspace.
 
 This README has two parts:
 

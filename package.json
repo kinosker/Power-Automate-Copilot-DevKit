@@ -1,9 +1,10 @@
 {
   "name": "power-automate-copilot-devkit",
   "displayName": "Power Automate Copilot DevKit",
-  "description": "Download, edit, and re-upload Power Automate cloud flows as unpacked solutions, powered by the Microsoft Power Platform CLI (pac).",
-  "version": "0.1.0",
+  "description": "Edit Power Automate flows in VS Code with GitHub Copilot skills, local validation, drift checks, and safe upload back to Dataverse.",
+  "version": "0.1.1",
   "publisher": "TienLongKuan",
+  "icon": "src/image/Logo.png",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,7 +30,7 @@
         {
           "id": "powerAutomateCopilotDevKit",
           "title": "Power Automate",
-          "icon": "$(zap)"
+          "icon": "src/image/Black and White Logo.png"
         }
       ]
     },
