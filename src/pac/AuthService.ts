@@ -116,7 +116,12 @@ export class AuthService {
         await this.state.update(LEGACY_SELECTED_ENV_KEY, undefined);
         // `--name` makes the new profile easy to spot; pac defaults to a
         // browser flow when no device-code/cert flags are passed.
-        await this.pac.runOrThrow(['auth', 'create', '--name', PAC_AUTH_PROFILE_NAME]);
+        await this.pac.runOrThrow(['auth', 'create', '--name', PAC_AUTH_PROFILE_NAME], {
+            completeWhen: async () => {
+                const profiles = await this.listProfiles();
+                return profiles.some(p => p.Active || p.Name === PAC_AUTH_PROFILE_NAME);
+            }
+        });
         await this.state.update(SIGNED_OUT_KEY, false);
     }
 

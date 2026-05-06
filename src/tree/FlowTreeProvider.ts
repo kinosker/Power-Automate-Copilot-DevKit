@@ -80,7 +80,9 @@ class PinnedSolutionNode extends vscode.TreeItem {
     ) {
         super(
             solution.FriendlyName || solution.SolutionUniqueName,
-            vscode.TreeItemCollapsibleState.Expanded
+            downloaded
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.Expanded
         );
         this.contextValue = 'pinnedSolution';
         this.iconPath = new vscode.ThemeIcon('lock');
@@ -378,7 +380,16 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         try {
             if (!element) {
                 const roots: Node[] = [];
-                if (!(await this.auth.hasActiveProfile())) {
+                const env = this.auth.getSelectedEnvironment();
+                if (env) {
+                    roots.push(new EnvironmentNode(env));
+                    // Only surface the skill-install affordance once an
+                    // environment is loaded, so it doesn't compete with
+                    // the sign-in / select-environment prompts.
+                    if (await this.shouldOfferSkillInstall()) {
+                        roots.push(new SkillInstallNode());
+                    }
+                } else if (!(await this.auth.hasActiveProfile())) {
                     roots.push(
                         new MessageNode('Sign in to Power Automate…', 'sign-in', {
                             command: commandId('signIn'),
@@ -386,23 +397,12 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                         })
                     );
                 } else {
-                    const env = this.auth.getSelectedEnvironment();
-                    if (!env) {
-                        roots.push(
-                            new MessageNode('Select an environment…', 'cloud', {
-                                command: commandId('selectEnvironment'),
-                                title: 'Select an environment'
-                            })
-                        );
-                    } else {
-                        roots.push(new EnvironmentNode(env));
-                        // Only surface the skill-install affordance once an
-                        // environment is loaded, so it doesn't compete with
-                        // the sign-in / select-environment prompts.
-                        if (await this.shouldOfferSkillInstall()) {
-                            roots.push(new SkillInstallNode());
-                        }
-                    }
+                    roots.push(
+                        new MessageNode('Select an environment…', 'cloud', {
+                            command: commandId('selectEnvironment'),
+                            title: 'Select an environment'
+                        })
+                    );
                 }
                 return roots;
             }
@@ -422,17 +422,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 if (!pin) {
                     return [new PickSolutionPlaceholderNode()];
                 }
-                // Try to enrich with friendly name / version from the server list.
-                let info: SolutionInfo = { SolutionUniqueName: pin.solutionUniqueName };
-                try {
-                    const all = await this.listSolutions();
-                    const hit = all.find(s => s.SolutionUniqueName === pin!.solutionUniqueName);
-                    if (hit) {
-                        info = hit;
-                    }
-                } catch {
-                    /* listing failed; fall back to bare name */
-                }
+                const info: SolutionInfo = { SolutionUniqueName: pin.solutionUniqueName };
                 const downloaded = await this.isDownloaded(pin.solutionUniqueName);
                 const node = new PinnedSolutionNode(info, downloaded);
                 this.liveSolutionNode.set(pin.solutionUniqueName, node);

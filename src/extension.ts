@@ -493,7 +493,14 @@ async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | un
     if (!pick) {
         return undefined;
     }
-    await auth.selectEnvironment(pick.env as OrgInfo);
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Power Automate: selecting environment…',
+            cancellable: false
+        },
+        () => auth.selectEnvironment(pick.env as OrgInfo)
+    );
     return pick.env as OrgInfo;
 }
 

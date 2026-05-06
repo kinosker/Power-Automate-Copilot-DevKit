@@ -14,6 +14,12 @@ export interface PacResult {
 export interface PacRunOptions extends SpawnOptionsWithoutStdio {
     /** When true, do not echo stdout/stderr to the OutputChannel (for sensitive payloads). */
     quiet?: boolean;
+    /**
+     * Optional success predicate for interactive commands that may keep their
+     * process alive after the requested side effect is complete.
+     */
+    completeWhen?: () => boolean | Promise<boolean>;
+    completeCheckIntervalMs?: number;
 }
 
 /**
@@ -41,12 +47,14 @@ export class PacCli {
     /** Run a pac command, streaming output. Resolves on exit (any code). */
     run(args: string[], opts: PacRunOptions = {}): Promise<PacResult> {
         const cmd = this.pacPath;
-        const { quiet, ...spawnOpts } = opts;
+        const { quiet, completeWhen, completeCheckIntervalMs, ...spawnOpts } = opts;
         // Log the command line only — never echo a redacted-arg version that
         // might mask user-visible info; redaction lives on the output stream.
         this.output.appendLine(`> ${cmd} ${args.join(' ')}`);
         return new Promise((resolve, reject) => {
             let proc;
+            let completeTimer: NodeJS.Timeout | undefined;
+            let settled = false;
             try {
                 // SECURITY: never spawn through a shell. cmd.exe / sh would
                 // re-interpret metacharacters in user-controlled args (solution
@@ -59,6 +67,23 @@ export class PacCli {
             let stdout = '';
             let stderr = '';
             let truncated = false;
+            const cleanup = () => {
+                if (completeTimer) {
+                    clearInterval(completeTimer);
+                    completeTimer = undefined;
+                }
+            };
+            const finish = (exitCode: number) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                cleanup();
+                if (quiet) {
+                    this.output.appendLine(`  (exit ${exitCode}, output suppressed)`);
+                }
+                resolve({ stdout, stderr, exitCode });
+            };
             const append = (s: string, target: 'out' | 'err') => {
                 const current = target === 'out' ? stdout.length : stderr.length;
                 const remaining = MAX_BUFFER_BYTES - current;
@@ -77,13 +102,45 @@ export class PacCli {
             };
             proc.stdout.on('data', (d: Buffer) => append(d.toString(), 'out'));
             proc.stderr.on('data', (d: Buffer) => append(d.toString(), 'err'));
-            proc.on('error', reject);
-            proc.on('close', (code: number | null) => {
-                if (quiet) {
-                    this.output.appendLine(`  (exit ${code ?? -1}, output suppressed)`);
+            proc.on('error', (e: Error) => {
+                if (settled) {
+                    return;
                 }
-                resolve({ stdout, stderr, exitCode: code ?? -1 });
+                settled = true;
+                cleanup();
+                reject(e);
             });
+            proc.on('close', (code: number | null) => {
+                finish(code ?? -1);
+            });
+            if (completeWhen) {
+                let checking = false;
+                completeTimer = setInterval(() => {
+                    if (checking || settled) {
+                        return;
+                    }
+                    checking = true;
+                    void Promise.resolve()
+                        .then(() => completeWhen())
+                        .then(done => {
+                            if (done && !settled) {
+                                this.output.appendLine('  completion condition met; ending pac process');
+                                try {
+                                    proc.kill();
+                                } catch {
+                                    /* process may already have exited */
+                                }
+                                finish(0);
+                            }
+                        })
+                        .catch(e => {
+                            this.output.appendLine(`  completion check failed: ${e?.message ?? e}`);
+                        })
+                        .finally(() => {
+                            checking = false;
+                        });
+                }, completeCheckIntervalMs ?? 1000);
+            }
         });
     }
 
