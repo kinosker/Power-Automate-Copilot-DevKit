@@ -54,6 +54,8 @@ If `pac` is not on `PATH`, set `powerAutomateCopilotDevKit.pacPath` to the full 
 
 ### Initial Setup
 
+<img width="1024" height="601" alt="Initial Setup" src="https://github.com/user-attachments/assets/be048912-a6bb-42e7-a783-58073557d7d0" />
+
 1. Click the Power Automate lightning icon in the VS Code Activity Bar.
 2. Select `Sign in to Power Automate...` or run `Power Automate: Sign In`.
 3. Complete the Power Platform sign-in flow.
