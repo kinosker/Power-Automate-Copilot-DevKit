@@ -115,13 +115,11 @@ export class AuthService {
         await this.state.update(SELECTED_ENV_KEY, undefined);
         await this.state.update(LEGACY_SELECTED_ENV_KEY, undefined);
         // `--name` makes the new profile easy to spot; pac defaults to a
-        // browser flow when no device-code/cert flags are passed.
-        await this.pac.runOrThrow(['auth', 'create', '--name', PAC_AUTH_PROFILE_NAME], {
-            completeWhen: async () => {
-                const profiles = await this.listProfiles();
-                return profiles.some(p => p.Active || p.Name === PAC_AUTH_PROFILE_NAME);
-            }
-        });
+        // browser flow when no device-code/cert flags are passed. Let the
+        // process exit normally so its localhost callback listener stays alive
+        // until the browser redirect completes.
+        await this.pac.runOrThrow(['auth', 'create', '--name', PAC_AUTH_PROFILE_NAME]);
+        await this.pac.runOrThrow(['auth', 'select', '--name', PAC_AUTH_PROFILE_NAME]);
         await this.state.update(SIGNED_OUT_KEY, false);
     }
 
