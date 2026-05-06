@@ -30,7 +30,7 @@
         {
           "id": "powerAutomateCopilotDevKit",
           "title": "Power Automate",
-          "icon": "src/image/Black and White Logo.png"
+          "icon": "src/image/activitybar.svg"
         }
       ]
     },
