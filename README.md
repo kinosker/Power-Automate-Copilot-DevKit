@@ -56,6 +56,32 @@ You can edit a flow in two ways:
 - Open the flow definition from the Power Automate tree and edit the JSON manually.
 - Ask GitHub Copilot to update the flow JSON using natural language.
 
+Example: Adding an Email action
+
+<img width="1280" height="752" alt="Final - Edit Flow Fast" src="https://github.com/user-attachments/assets/1c3a52f1-04b3-460e-a58d-a03d360c414d" />
+
+
+### Uploading A Flow
+
+ GHCP prompts:
+```text
+Upload Flow
+```
+Example:
+<img width="1280" height="752" alt="Final - Upload Flow Fast" src="https://github.com/user-attachments/assets/082cab41-8e61-4834-8493-7a567a1b7181" />
+
+
+### Viewing A Flow
+
+ GHCP prompts:
+```text
+View Flow
+```
+Example:
+<img width="1280" height="752" alt="Final - View Flow Fast" src="https://github.com/user-attachments/assets/0ca8021c-4047-4482-b2c2-57d657dfb817" />
+
+
+
 After editing:
 
 1. Save the flow file.
