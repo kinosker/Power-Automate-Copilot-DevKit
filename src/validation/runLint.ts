@@ -5,6 +5,7 @@ import { lintFlow, LintFinding, findingsToDiagnostics } from './flowLinter';
 import { ConnectionReferenceService } from '../pac/ConnectionReferenceService';
 import { getDiagnosticCollection } from './diagnostics';
 import { EXTENSION_DISPLAY_NAME } from '../constants';
+import { isSolutionFolder } from '../pac/SolutionMeta';
 
 export interface LintRunResult {
     findings: LintFinding[];
@@ -14,17 +15,17 @@ export interface LintRunResult {
     solutionFolder?: string;
 }
 
-/** Walk up from a flow file to find the unpacked solution root (folder with `Other/Solution.xml`). */
+/**
+ * Walk up from a flow file to find the solution root. Recognises both the
+ * new `Others/solution.json` marker (API-only download) and the legacy
+ * `Other/Solution.xml` (`pac unpack`) sentinel.
+ */
 export async function findSolutionFolderForFlow(flowFile: string): Promise<string | undefined> {
     let dir = path.dirname(flowFile);
     for (let i = 0; i < 8; i++) {
-        const marker = path.join(dir, 'Other', 'Solution.xml');
-        try {
-            const s = await fs.stat(marker);
-            if (s.isFile()) {
-                return dir;
-            }
-        } catch { /* keep walking */ }
+        if (await isSolutionFolder(dir)) {
+            return dir;
+        }
         const parent = path.dirname(dir);
         if (parent === dir) { break; }
         dir = parent;
@@ -43,13 +44,15 @@ export async function lintFlowFile(
     const text = await fs.readFile(flowFile, 'utf8');
     const solutionFolder = await findSolutionFolderForFlow(flowFile);
     let connectionRefKeys: Set<string> | undefined;
+    let connectorIds: Set<string> | undefined;
     if (solutionFolder) {
         const svc = await ConnectionReferenceService.fromSolutionFolder(solutionFolder);
         if (!svc.isEmpty()) {
             connectionRefKeys = svc.asSet();
+            connectorIds = svc.connectorIdSet();
         }
     }
-    const findings = lintFlow(text, { connectionRefKeys });
+    const findings = lintFlow(text, { connectionRefKeys, connectorIds });
 
     let errors = 0;
     let warnings = 0;

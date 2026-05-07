@@ -5,6 +5,7 @@ import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
 import { writeBaseline } from '../pac/FlowManifest';
+import { findExistingFlowFile, flowFileName, prettyClientData } from '../pac/flowFile';
 import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 
@@ -17,13 +18,13 @@ function workspaceRoot(): string {
 }
 
 /**
- * Refresh a single flow from the server without re-exporting the whole
+ * Refresh a single flow from the server without re-fetching the whole
  * solution. Replaces the local `<DisplayName>-<GUID>.json` and the pristine
  * baseline with the live `clientdata`.
  *
  * Limitations (vs. a full `Download Solution`):
- *   * Only the flow definition is refreshed. Solution.xml, connection
- *     references, and other solution components are NOT re-synced.
+ *   * Only the flow definition is refreshed. Connection references and
+ *     solution metadata are NOT re-synced.
  *   * The folder must already exist (i.e. an initial download must have run
  *     at least once for this solution).
  *   * New flows added to the solution server-side will not appear; that
@@ -78,30 +79,19 @@ export async function refreshFlowFromServer(
     // Resolve the existing local filename. Prefer the on-disk filename keyed
     // by GUID so a server-side rename doesn't fragment the workspace into
     // two files. Fall back to constructing one from the server `name`.
-    const guid = flow.WorkflowId!.toLowerCase();
-    const entries = await fs.readdir(workflowsDir).catch(() => [] as string[]);
-    let filename = entries.find(f => f.toLowerCase().endsWith(`-${guid}.json`));
+    let filename = await findExistingFlowFile(workflowsDir, flow.WorkflowId!);
     if (!filename) {
-        const safe = (live.name ?? flow.DisplayName ?? 'Flow')
-            .replace(/[^A-Za-z0-9 _.-]+/g, '_')
-            .trim()
-            .slice(0, 100) || 'Flow';
-        filename = `${safe}-${flow.WorkflowId!}.json`;
+        filename = flowFileName(flow.WorkflowId!, live.name ?? flow.DisplayName);
         output.appendLine(`[refresh-flow] no existing local file; creating '${filename}'.`);
     }
     const target = path.join(workflowsDir, filename);
 
     // Server returns clientdata as a single-line JSON string. Pretty-print
-    // to match what `pac solution unpack` writes during the initial
-    // download, so users get readable diffs and editable files. Drift
-    // detection compares via canonical JSON (sorted keys, whitespace-
-    // independent), so formatting differences don't trigger false drift.
-    let fileText = live.clientdata;
-    try {
-        fileText = JSON.stringify(JSON.parse(live.clientdata), null, 2);
-    } catch {
-        // Server returned non-JSON; write as-is rather than fail.
-    }
+    // to match what the download path writes, so users get readable diffs
+    // and editable files. Drift detection compares via canonical JSON
+    // (sorted keys, whitespace-independent), so formatting differences
+    // don't trigger false drift.
+    const fileText = prettyClientData(live.clientdata);
     await fs.writeFile(target, fileText, 'utf8');
     await writeBaseline(root, solution.SolutionUniqueName, flow.WorkflowId!, live.clientdata);
 

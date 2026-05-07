@@ -48,7 +48,7 @@ function legacySnapshotKey(uniqueName: string): string {
     return legacyStateKey(`snapshot.${uniqueName}`);
 }
 
-/** Locate the `<DisplayName>-<GUID>.json` file for the given flow inside the unpacked solution. */
+/** Locate the `<DisplayName>-<GUID>.json` file for the given flow inside the downloaded solution folder. */
 export async function resolveFlowFile(solutionFolder: string, flow: FlowInfo): Promise<string> {
     const dir = path.join(solutionFolder, 'Workflows');
     const entries = await fs.readdir(dir).catch(() => [] as string[]);

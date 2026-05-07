@@ -1,16 +1,25 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs/promises';
 import { PacCli } from '../pac/PacCli';
 import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
+import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
 import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../pac/FlowManifest';
+import {
+    flowFileName,
+    prettyClientData,
+    workflowIdFromFlowFile
+} from '../pac/flowFile';
+import {
+    SolutionMeta,
+    writeConnectionReferenceManifest,
+    writeSolutionMeta
+} from '../pac/SolutionMeta';
+import { ConnectionReferenceService } from '../pac/ConnectionReferenceService';
 import { hashFolder } from '../pac/folderHash';
 import { assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
-import { getConfigValue } from '../config';
 import { legacyStateKey, stateKey } from '../constants';
 
 function workspaceRoot(): string {
@@ -39,7 +48,7 @@ async function folderExists(p: string): Promise<boolean> {
 }
 
 export async function downloadSolution(
-    pac: PacCli,
+    _pac: PacCli,
     solution: SolutionInfo,
     state?: vscode.Memento,
     auth?: AuthService,
@@ -48,7 +57,6 @@ export async function downloadSolution(
     assertSafeSolutionName(solution.SolutionUniqueName);
     const root = workspaceRoot();
     const solutionsRoot = getSolutionsRoot(root).absolutePath;
-    const packageType = getConfigValue<string>('packageType', 'Unmanaged');
     const targetFolder = path.join(solutionsRoot, solution.SolutionUniqueName);
 
     // If the folder already exists, check whether the user edited it since the
@@ -78,65 +86,78 @@ export async function downloadSolution(
         }
     }
 
-    // Per-call temp dir, mode 0700 on POSIX; on Windows the user's tmp ACL
-    // already restricts other users, but mkdtemp gives us a unique path either way.
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'power-automate-copilot-devkit-'));
-    try {
-        await fs.chmod(tmpDir, 0o700).catch(() => { /* not supported on Windows */ });
-    } catch { /* best-effort */ }
-    const tmpZip = path.join(tmpDir, `${solution.SolutionUniqueName}.zip`);
-
-    await fs.mkdir(path.dirname(targetFolder), { recursive: true });
-
-    try {
-        await vscode.window.withProgress(
-            {
-                location: vscode.ProgressLocation.Notification,
-                title: `Downloading solution '${solution.SolutionUniqueName}'`,
-                cancellable: false
-            },
-            async progress => {
-                progress.report({ message: 'Exporting…' });
-                // Try the synchronous export first: for small/simple solutions
-                // it skips the Dataverse async-job queue (which can sit idle
-                // for many minutes) and runs inline on the request thread.
-                // The sync endpoint has a server-side ~2 minute cap, so on
-                // timeout or "too large" failures we fall back to async.
-                const baseExportArgs = [
-                    'solution', 'export',
-                    '--name', solution.SolutionUniqueName,
-                    '--path', tmpZip,
-                    '--managed', packageType === 'Managed' ? 'true' : 'false',
-                    '--overwrite', 'true'
-                ];
-                try {
-                    await pac.runOrThrow([...baseExportArgs, '--async', 'false']);
-                } catch (e: any) {
-                    const msg = String(e?.message ?? e);
-                    const isTimeout = /timeout|timed out|timed-out|operation.*cancel|gateway|504|408|request.*too.*large|payload.*too.*large/i.test(msg);
-                    if (!isTimeout) {
-                        throw e;
-                    }
-                    output?.appendLine(`[export] synchronous export failed (${msg.split('\n')[0]}); retrying with --async true.`);
-                    progress.report({ message: 'Exporting (async)…' });
-                    await pac.runOrThrow([...baseExportArgs, '--async', 'true']);
-                }
-
-                progress.report({ message: 'Unpacking…' });
-                await pac.runOrThrow([
-                    'solution', 'unpack',
-                    '--zipFile', tmpZip,
-                    '--folder', targetFolder,
-                    '--packageType', packageType,
-                    '--allowDelete', 'true',
-                    '--allowWrite', 'true',
-                    '--processCanvasApps', 'false'
-                ]);
-            }
-        );
-    } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { /* ignore */ });
+    // Selected environment is required: this path is API-only.
+    if (!auth) {
+        throw new Error('Internal error: AuthService is required for download.');
     }
+    const env = auth.getSelectedEnvironment();
+    if (!env?.EnvironmentUrl) {
+        throw new Error('Select a Power Platform environment before downloading a solution.');
+    }
+
+    await fs.mkdir(targetFolder, { recursive: true });
+
+    const dvAuth = new DataverseAuth();
+    const out = output ?? vscode.window.createOutputChannel('Power Automate');
+    const client = new DataverseClient(env.EnvironmentUrl, dvAuth, out);
+
+    let flows: WorkflowSummary[] = [];
+    let connectionRefs: { logicalName: string; displayName?: string; connectorId?: string }[] = [];
+    let solutionId: string | undefined;
+
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: `Downloading solution '${solution.SolutionUniqueName}'`,
+            cancellable: false
+        },
+        async progress => {
+            progress.report({ message: 'Resolving solution…' });
+            solutionId = await client.getSolutionIdByUniqueName(solution.SolutionUniqueName);
+            if (!solutionId) {
+                throw new Error(
+                    `Solution '${solution.SolutionUniqueName}' was not found in the selected environment.`
+                );
+            }
+
+            progress.report({ message: 'Fetching flows…' });
+            flows = await client.listSolutionWorkflows(
+                solution.SolutionUniqueName,
+                { includeClientdata: true }
+            );
+
+            progress.report({ message: 'Fetching connection references…' });
+            connectionRefs = await client.listSolutionConnectionReferences(
+                solution.SolutionUniqueName
+            );
+
+            progress.report({ message: 'Writing files…' });
+            await writeWorkflowFiles(targetFolder, flows, out);
+            await writeConnectionReferenceManifest(targetFolder, {
+                schemaVersion: 1,
+                solutionUniqueName: solution.SolutionUniqueName,
+                capturedAt: new Date().toISOString(),
+                entries: connectionRefs.map(r => ({
+                    logicalName: r.logicalName,
+                    displayName: r.displayName,
+                    connectorId: r.connectorId
+                }))
+            });
+            const meta: SolutionMeta = {
+                schemaVersion: 1,
+                uniqueName: solution.SolutionUniqueName,
+                solutionId: solutionId!,
+                friendlyName: solution.FriendlyName,
+                env: { id: env.EnvironmentId, url: env.EnvironmentUrl },
+                downloadedAt: new Date().toISOString()
+            };
+            await writeSolutionMeta(targetFolder, meta);
+        }
+    );
+
+    // Invalidate the connection-reference cache so the linter picks up the
+    // freshly written manifest immediately.
+    ConnectionReferenceService.clearCache(targetFolder);
 
     const uri = vscode.Uri.file(targetFolder);
     await vscode.commands.executeCommand('revealInExplorer', uri);
@@ -149,56 +170,105 @@ export async function downloadSolution(
     }
 
     // Capture per-flow metadata (workflowid, modifiedon, statecode, ETag) for
-    // safe-upload drift detection. Failure here is non-fatal: the upload path
-    // will simply skip the drift check.
-    const driftEnabled = getConfigValue<boolean>('driftDetection', true);
-    if (driftEnabled && auth) {
-        const env = auth.getSelectedEnvironment();
-        if (env?.EnvironmentUrl) {
-            try {
-                const dvAuth = new DataverseAuth();
-                const out = output ?? vscode.window.createOutputChannel('Power Automate');
-                const client = new DataverseClient(env.EnvironmentUrl, dvAuth, out);
-                const flows = await client.listSolutionWorkflows(
-                    solution.SolutionUniqueName,
-                    { includeClientdata: true }
-                );
-                const manifest = buildFlowManifest(
-                    solution.SolutionUniqueName,
-                    { id: env.EnvironmentId, url: env.EnvironmentUrl },
-                    flows
-                );
-                await writeFlowManifest(root, manifest);
+    // safe-upload drift detection. Reuses the workflow list we just fetched.
+    try {
+        const manifest = buildFlowManifest(
+            solution.SolutionUniqueName,
+            { id: env.EnvironmentId, url: env.EnvironmentUrl },
+            flows
+        );
+        await writeFlowManifest(root, manifest);
 
-                // Save the pristine baseline (raw server clientdata) so the
-                // upload path can do content-based drift detection without
-                // false positives from publish/state-toggle ETag bumps.
-                let baselined = 0;
-                for (const f of flows) {
-                    if (!f.workflowid || !f.clientdata) { continue; }
-                    try {
-                        await writeBaseline(root, solution.SolutionUniqueName, f.workflowid, f.clientdata);
-                        baselined++;
-                    } catch (be: any) {
-                        out.appendLine(
-                            `[baseline] failed to write baseline for ${f.workflowid}: ${be.message ?? be}`
-                        );
-                    }
-                }
+        // Save the pristine baseline (raw server clientdata) so the upload
+        // path can do content-based drift detection without false positives
+        // from publish/state-toggle ETag bumps.
+        let baselined = 0;
+        for (const f of flows) {
+            if (!f.workflowid || !f.clientdata) { continue; }
+            try {
+                await writeBaseline(root, solution.SolutionUniqueName, f.workflowid, f.clientdata);
+                baselined++;
+            } catch (be: any) {
                 out.appendLine(
-                    `[manifest] captured ${flows.length} flow(s) for '${solution.SolutionUniqueName}' (${baselined} baseline(s) written).`
-                );
-            } catch (e: any) {
-                const out = output ?? vscode.window.createOutputChannel('Power Automate');
-                out.appendLine(
-                    `[manifest] failed to capture per-flow metadata (drift detection disabled for this download): ${e.message ?? e}`
-                );
-                vscode.window.showWarningMessage(
-                    `Solution downloaded, but per-flow metadata capture failed. Remote-drift detection on upload will be unavailable until the next successful download. ${e.message ?? ''}`
+                    `[baseline] failed to write baseline for ${f.workflowid}: ${be.message ?? be}`
                 );
             }
         }
+        out.appendLine(
+            `[manifest] captured ${flows.length} flow(s) for '${solution.SolutionUniqueName}' (${baselined} baseline(s) written).`
+        );
+    } catch (e: any) {
+        out.appendLine(
+            `[manifest] failed to capture per-flow metadata (drift detection disabled for this download): ${e.message ?? e}`
+        );
+        vscode.window.showWarningMessage(
+            `Solution downloaded, but per-flow metadata capture failed. Remote-drift detection on upload will be unavailable until the next successful download. ${e.message ?? ''}`
+        );
     }
 
-    vscode.window.showInformationMessage(`Solution unpacked to ${targetFolder}`);
+    vscode.window.showInformationMessage(
+        `Solution '${solution.SolutionUniqueName}' downloaded to ${targetFolder} (${flows.length} flow(s), ${connectionRefs.length} connection reference(s)).`
+    );
+}
+
+/**
+ * Write each flow's pretty-printed `clientdata` to
+ * `<solution>/Workflows/<SafeName>-<workflowid>.json`. Existing files keyed
+ * by workflowid are overwritten in place (so a server-side rename keeps a
+ * single file). Files keyed by workflowids no longer present on the server
+ * are deleted to keep the workspace in sync with the solution.
+ */
+async function writeWorkflowFiles(
+    targetFolder: string,
+    flows: WorkflowSummary[],
+    out: vscode.OutputChannel
+): Promise<void> {
+    const workflowsDir = path.join(targetFolder, 'Workflows');
+    await fs.mkdir(workflowsDir, { recursive: true });
+
+    const liveIds = new Set(
+        flows
+            .map(f => f.workflowid?.toLowerCase())
+            .filter((x): x is string => !!x)
+    );
+
+    // Index existing files by workflowid (lowercased) so we can overwrite
+    // in place when the display name changed server-side, and prune files
+    // whose workflowid is no longer in the solution.
+    const existingByGuid = new Map<string, string>();
+    const dirEntries = await fs.readdir(workflowsDir).catch(() => [] as string[]);
+    for (const file of dirEntries) {
+        const id = workflowIdFromFlowFile(file);
+        if (id) {
+            existingByGuid.set(id, file);
+        }
+    }
+
+    for (const f of flows) {
+        if (!f.workflowid || !f.clientdata) {
+            out.appendLine(`[download] skipping workflow with no clientdata: ${f.workflowid ?? '(no id)'}`);
+            continue;
+        }
+        const guid = f.workflowid.toLowerCase();
+        const desiredName = flowFileName(f.workflowid, f.name);
+        const existing = existingByGuid.get(guid);
+        if (existing && existing !== desiredName) {
+            // Server-side rename: drop the old filename so we don't leave
+            // a stale duplicate alongside the new one.
+            await fs.rm(path.join(workflowsDir, existing), { force: true }).catch(() => { /* best-effort */ });
+        }
+        await fs.writeFile(
+            path.join(workflowsDir, desiredName),
+            prettyClientData(f.clientdata),
+            'utf8'
+        );
+    }
+
+    // Remove orphans: files for workflowids no longer in the solution.
+    for (const [guid, file] of existingByGuid) {
+        if (!liveIds.has(guid)) {
+            await fs.rm(path.join(workflowsDir, file), { force: true }).catch(() => { /* best-effort */ });
+            out.appendLine(`[download] removed orphan flow file '${file}'.`);
+        }
+    }
 }

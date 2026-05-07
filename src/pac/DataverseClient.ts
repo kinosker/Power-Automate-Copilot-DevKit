@@ -237,9 +237,27 @@ export class DataverseClient {
             select.push('clientdata');
         }
         // Dataverse caps `$filter` length around ~10K characters; chunk to keep
-        // each URL well under that even with hundreds of workflows.
-        const CHUNK = 50;
+        // each URL well under that even with hundreds of workflows. When
+        // `clientdata` is included a single response can also blow past the
+        // 16 MB body cap (`MAX_RESPONSE_BYTES`), so use a smaller chunk and
+        // fall back to per-flow GETs if a chunked response is rejected.
+        const CHUNK = opts?.includeClientdata ? 10 : 50;
         const summaries: WorkflowSummary[] = [];
+        const collect = (row: Record<string, unknown> & { '@odata.etag'?: string }) => {
+            const id = (row['workflowid'] as string | undefined) ?? '';
+            if (!id) { return; }
+            summaries.push({
+                workflowid: id,
+                name: row['name'] as string | undefined,
+                modifiedon: row['modifiedon'] as string | undefined,
+                statecode: row['statecode'] as number | undefined,
+                statuscode: row['statuscode'] as number | undefined,
+                etag: typeof row['@odata.etag'] === 'string' ? row['@odata.etag'] : undefined,
+                clientdata: opts?.includeClientdata
+                    ? (row['clientdata'] as string | undefined)
+                    : undefined
+            });
+        };
         for (let i = 0; i < ids.length; i += CHUNK) {
             const slice = ids.slice(i, i + CHUNK);
             const filter = slice.map(id => `workflowid eq ${id}`).join(' or ');
@@ -247,28 +265,100 @@ export class DataverseClient {
                 `${this.base}/workflows?$select=${select.join(',')}` +
                 `&$filter=${encodeURIComponent(filter)}`;
             this.output.appendLine(`> GET ${redactUrl(url)}`);
-            const res = await fetch(url, { method: 'GET', headers });
-            await throwIfError(res, 'GET workflows');
-            const body = (await readJson(res)) as {
-                value?: (Record<string, unknown> & { '@odata.etag'?: string })[];
-            };
-            for (const row of body.value ?? []) {
-                const id = (row['workflowid'] as string | undefined) ?? '';
-                if (!id) { continue; }
-                summaries.push({
-                    workflowid: id,
-                    name: row['name'] as string | undefined,
-                    modifiedon: row['modifiedon'] as string | undefined,
-                    statecode: row['statecode'] as number | undefined,
-                    statuscode: row['statuscode'] as number | undefined,
-                    etag: typeof row['@odata.etag'] === 'string' ? row['@odata.etag'] : undefined,
-                    clientdata: opts?.includeClientdata
-                        ? (row['clientdata'] as string | undefined)
-                        : undefined
-                });
+            try {
+                const res = await fetch(url, { method: 'GET', headers });
+                await throwIfError(res, 'GET workflows');
+                const body = (await readJson(res)) as {
+                    value?: (Record<string, unknown> & { '@odata.etag'?: string })[];
+                };
+                for (const row of body.value ?? []) {
+                    collect(row);
+                }
+            } catch (e: any) {
+                const msg = String(e?.message ?? e);
+                // Fall back to per-flow GETs when the chunk is too large to
+                // buffer or the server rejects the response. Errors from the
+                // per-flow path propagate normally.
+                if (!opts?.includeClientdata || !/exceeded size limit|413|payload.*too.*large/i.test(msg)) {
+                    throw e;
+                }
+                this.output.appendLine(
+                    `[workflows] chunk of ${slice.length} rejected (${msg.split('\n')[0]}); retrying per-flow.`
+                );
+                for (const id of slice) {
+                    const single = await this.getWorkflow(id, select);
+                    collect({ ...single, '@odata.etag': single.etag });
+                }
             }
         }
         return summaries;
+    }
+
+    /**
+     * List connection references that are members of the given solution
+     * (resolved by unique name).
+     *
+     * Solution membership lives in `solutioncomponents`, but the
+     * `componenttype` enum value for ConnectionReference is
+     * environment-version-specific. Rather than hardcode it, we:
+     *   1. Resolve the solution → `solutionid` (cached).
+     *   2. Pull every `solutioncomponents` row for that solution
+     *      (`objectid` only — no componenttype filter).
+     *   3. Pull all connection references in the env (cheap; small table).
+     *   4. Intersect by `connectionreferenceid` ↔ `objectid`.
+     */
+    async listSolutionConnectionReferences(
+        solutionUniqueName: string
+    ): Promise<{ logicalName: string; displayName?: string; connectorId?: string; connectionReferenceId: string }[]> {
+        const solutionId = await this.getSolutionIdByUniqueName(solutionUniqueName);
+        if (!solutionId) {
+            this.output.appendLine(`[connectionreferences] solution '${solutionUniqueName}' not found.`);
+            return [];
+        }
+
+        const headers = await this.authHeaders();
+        const compUrl =
+            `${this.base}/solutioncomponents?$select=objectid` +
+            `&$filter=${encodeURIComponent(`_solutionid_value eq ${solutionId}`)}`;
+        this.output.appendLine(`> GET ${redactUrl(compUrl)} (solution components for connection-ref join)`);
+        const compRes = await fetch(compUrl, { method: 'GET', headers });
+        await throwIfError(compRes, 'GET solutioncomponents');
+        const compBody = (await readJson(compRes)) as { value?: { objectid?: string }[] };
+        const componentIds = new Set(
+            (compBody.value ?? [])
+                .map(r => r.objectid)
+                .filter((x): x is string => typeof x === 'string' && x.length > 0)
+                .map(s => s.toLowerCase())
+        );
+        if (componentIds.size === 0) {
+            return [];
+        }
+
+        const refsUrl =
+            `${this.base}/connectionreferences` +
+            `?$select=connectionreferenceid,connectionreferencelogicalname,connectionreferencedisplayname,connectorid`;
+        this.output.appendLine(`> GET ${redactUrl(refsUrl)} (env connection references)`);
+        const refsRes = await fetch(refsUrl, { method: 'GET', headers });
+        await throwIfError(refsRes, 'GET connectionreferences');
+        const refsBody = (await readJson(refsRes)) as { value?: any[] };
+
+        const out: { logicalName: string; displayName?: string; connectorId?: string; connectionReferenceId: string }[] = [];
+        for (const row of refsBody.value ?? []) {
+            const id = typeof row.connectionreferenceid === 'string'
+                ? row.connectionreferenceid.toLowerCase()
+                : '';
+            if (!id || !componentIds.has(id)) { continue; }
+            const logicalName = String(row.connectionreferencelogicalname ?? '');
+            if (!logicalName) { continue; }
+            out.push({
+                connectionReferenceId: id,
+                logicalName,
+                displayName: row.connectionreferencedisplayname ? String(row.connectionreferencedisplayname) : undefined,
+                connectorId: row.connectorid ? String(row.connectorid) : undefined
+            });
+        }
+        out.sort((a, b) => a.logicalName.localeCompare(b.logicalName));
+        return out;
     }
 
     /**

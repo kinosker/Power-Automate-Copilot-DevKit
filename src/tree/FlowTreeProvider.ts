@@ -8,6 +8,7 @@ import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
 import { clientDataEquals, readBaseline, readFlowManifest } from '../pac/FlowManifest';
 import { getSolutionsRoot } from '../pac/validation';
+import { isSolutionFolder } from '../pac/SolutionMeta';
 import { getConfigValue } from '../config';
 import { commandId, SKILL_SLUG } from '../constants';
 
@@ -80,9 +81,7 @@ class PinnedSolutionNode extends vscode.TreeItem {
     ) {
         super(
             solution.FriendlyName || solution.SolutionUniqueName,
-            downloaded
-                ? vscode.TreeItemCollapsibleState.Collapsed
-                : vscode.TreeItemCollapsibleState.Expanded
+            vscode.TreeItemCollapsibleState.Expanded
         );
         this.contextValue = 'pinnedSolution';
         this.iconPath = new vscode.ThemeIcon('lock');
@@ -469,18 +468,11 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         if (!ws) {
             return false;
         }
-        const solXml = path.join(
+        const folder = path.join(
             getSolutionsRoot(ws.uri.fsPath).absolutePath,
-            solutionUniqueName,
-            'Other',
-            'Solution.xml'
+            solutionUniqueName
         );
-        try {
-            await fs.access(solXml);
-            return true;
-        } catch {
-            return false;
-        }
+        return isSolutionFolder(folder);
     }
 
     /**
@@ -502,7 +494,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
 
     async listFlows(sol: SolutionInfo): Promise<FlowInfo[]> {
         // This pac version has no `flow list` command, so read flows from the
-        // unpacked solution folder instead. Users see flows after downloading.
+        // downloaded solution folder instead. Users see flows after downloading.
         const ws = vscode.workspace.workspaceFolders?.[0];
         if (!ws) {
             return [];

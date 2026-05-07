@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { assertSafeSolutionName } from './validation';
+import { isSolutionFolder } from './SolutionMeta';
 import { legacyStateKey, stateKey } from '../constants';
 
 const KEY = stateKey('pinnedSolutions');
@@ -78,11 +79,9 @@ export class PinnedSolutionService {
         }
         const candidates: string[] = [];
         for (const name of entries) {
-            const solXml = path.join(root, name, 'Other', 'Solution.xml');
-            try {
-                await fs.access(solXml);
+            if (await isSolutionFolder(path.join(root, name))) {
                 candidates.push(name);
-            } catch { /* not a solution */ }
+            }
         }
         if (candidates.length !== 1) {
             return undefined;

@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { connectionReferenceManifestPath, readConnectionReferenceManifest } from './SolutionMeta';
 
 interface ConnectionReferenceInput {
     file: string;
@@ -15,25 +16,55 @@ interface CachedConnectionReferences {
 const serviceCache = new Map<string, CachedConnectionReferences>();
 
 /**
- * Reads connection-reference logical names from an unpacked solution folder.
+ * Reads connection-reference logical names that belong to a solution.
  *
- * Looks at:
- *   <solution>/customizations.xml
- *   <solution>/connectionreferences/*.xml
- *
- * Uses a small regex scan rather than a full XML parser to avoid a new dep.
+ * Two source modes, in priority order:
+ *   1. New API-only download path: `<solution>/Others/connection-references.json`
+ *      (a JSON manifest written at download time). Authoritative when present.
+ *   2. Legacy `pac unpack` output: regex-scan `<solution>/customizations.xml`
+ *      and `<solution>/connectionreferences/*.xml` for
+ *      `connectionreferencelogicalname` values.
  */
 export class ConnectionReferenceService {
     private readonly keys: Set<string>;
+    private readonly connectorIds: Set<string>;
 
-    private constructor(keys: Set<string>) {
+    private constructor(keys: Set<string>, connectorIds: Set<string>) {
         this.keys = keys;
+        this.connectorIds = connectorIds;
     }
 
     static async fromSolutionFolder(solutionFolder: string): Promise<ConnectionReferenceService> {
         const cacheKey = path.resolve(solutionFolder);
+
+        // Prefer the JSON manifest written by the API-only download path.
+        const manifestFile = connectionReferenceManifestPath(solutionFolder);
+        const manifestStat = await statFile(manifestFile);
+        if (manifestStat) {
+            const signature = `manifest:${manifestFile}:${manifestStat.mtimeMs}:${manifestStat.size}`;
+            const cached = serviceCache.get(cacheKey);
+            if (cached?.signature === signature) {
+                return cached.service;
+            }
+            const manifest = await readConnectionReferenceManifest(solutionFolder);
+            const keys = new Set<string>();
+            const connectorIds = new Set<string>();
+            for (const entry of manifest?.entries ?? []) {
+                if (entry.logicalName) {
+                    keys.add(entry.logicalName);
+                }
+                if (entry.connectorId) {
+                    connectorIds.add(entry.connectorId);
+                }
+            }
+            const service = new ConnectionReferenceService(keys, connectorIds);
+            serviceCache.set(cacheKey, { signature, service });
+            return service;
+        }
+
+        // Legacy fallback: scan customizations.xml + connectionreferences/*.xml.
         const inputs = await findConnectionReferenceInputs(solutionFolder);
-        const signature = inputs
+        const signature = 'xml:' + inputs
             .map(input => `${input.file}:${input.mtimeMs}:${input.size}`)
             .join('|');
         const cached = serviceCache.get(cacheKey);
@@ -42,8 +73,10 @@ export class ConnectionReferenceService {
         }
 
         const keys = new Set<string>();
+        const connectorIds = new Set<string>();
 
-        const re = /connectionreferencelogicalname\s*=\s*"([^"]+)"|<connectionreferencelogicalname[^>]*>([^<]+)<\/connectionreferencelogicalname>/gi;
+        const logicalRe = /connectionreferencelogicalname\s*=\s*"([^"]+)"|<connectionreferencelogicalname[^>]*>([^<]+)<\/connectionreferencelogicalname>/gi;
+        const connectorRe = /connectorid\s*=\s*"([^"]+)"|<connectorid[^>]*>([^<]+)<\/connectorid>/gi;
 
         for (const input of inputs) {
             let text: string;
@@ -52,15 +85,21 @@ export class ConnectionReferenceService {
             } catch {
                 continue;
             }
-            for (const match of text.matchAll(re)) {
+            for (const match of text.matchAll(logicalRe)) {
                 const key = (match[1] ?? match[2] ?? '').trim();
                 if (key) {
                     keys.add(key);
                 }
             }
+            for (const match of text.matchAll(connectorRe)) {
+                const id = (match[1] ?? match[2] ?? '').trim();
+                if (id) {
+                    connectorIds.add(id);
+                }
+            }
         }
 
-        const service = new ConnectionReferenceService(keys);
+        const service = new ConnectionReferenceService(keys, connectorIds);
         serviceCache.set(cacheKey, { signature, service });
         return service;
     }
@@ -81,12 +120,20 @@ export class ConnectionReferenceService {
         return this.keys.has(logicalName);
     }
 
+    hasConnectorId(connectorId: string): boolean {
+        return this.connectorIds.has(connectorId);
+    }
+
     asSet(): Set<string> {
         return new Set(this.keys);
     }
 
+    connectorIdSet(): Set<string> {
+        return new Set(this.connectorIds);
+    }
+
     isEmpty(): boolean {
-        return this.keys.size === 0;
+        return this.keys.size === 0 && this.connectorIds.size === 0;
     }
 }
 

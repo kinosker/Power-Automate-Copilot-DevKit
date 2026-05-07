@@ -319,7 +319,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 `Download '${pick.solution.FriendlyName ?? pick.solution.SolutionUniqueName}' now?`,
                 {
                     modal: true,
-                    detail: 'Exports the solution from the environment and unpacks the flow definitions into the workspace so they can be edited locally.'
+                    detail: 'Downloads the solution\u2019s flows from the environment via the Dataverse API so they can be edited locally.'
                 },
                 'Download'
             );

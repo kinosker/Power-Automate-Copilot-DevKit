@@ -14,7 +14,9 @@
  *        - `runAfterTarget`: `runAfter` keys must reference existing
  *          sibling actions and never the operation itself.
  *        - `connectionKeyDeclared`: `inputs.host.connectionName` must be
- *          a declared connection reference (when solution context known).
+ *          a declared connection reference (logical name) or its
+ *          `host.apiId` must match a declared connector id (when solution
+ *          context known).
  *        - `foreachSequential`: warn when a Foreach with write-style
  *          child actions is not marked Sequential (race-condition risk).
  *        - `teamsRecipientShape`: Teams `PostMessageToConversation`
@@ -49,6 +51,14 @@ export interface LintContext {
      * a warning (we cannot prove the key is missing without the solution).
      */
     connectionRefKeys?: Set<string>;
+    /**
+     * Set of connector ids (e.g. `/providers/Microsoft.PowerApps/apis/shared_office365`)
+     * declared by the solution's connection references. Used so the
+     * `connectionKeyDeclared` rule accepts the raw-clientdata shape where
+     * `inputs.host.connectionName` is the connector slug rather than the
+     * connection-reference logical name.
+     */
+    connectorIds?: Set<string>;
 }
 
 /** Top-level entry: lint the unpacked-solution flow JSON text. */
@@ -172,7 +182,49 @@ export function lintFlow(text: string, ctx: LintContext = {}): LintFinding[] {
         scanExpressions(definitionNode, [...definitionPath], findings);
     }
 
+    // Validate the top-level `properties.connectionReferences` map (sibling
+    // of `definition`). Each entry's `connection.connectionReferenceLogicalName`
+    // must point at a logical name declared in the surrounding solution.
+    runConnectionReferencesRule(root, ctx, findings);
+
     return findings;
+}
+
+/**
+ * Validate `properties.connectionReferences.<slug>.connection.connectionReferenceLogicalName`
+ * against the solution's declared logical names. Only runs when solution
+ * context is available; otherwise the value cannot be proved missing.
+ */
+function runConnectionReferencesRule(
+    root: Node,
+    ctx: LintContext,
+    out: LintFinding[]
+): void {
+    if (!ctx.connectionRefKeys || ctx.connectionRefKeys.size === 0) {
+        return;
+    }
+    const refsNode = findNodeAtLocation(root, ['properties', 'connectionReferences']);
+    if (!refsNode || refsNode.type !== 'object') {
+        return;
+    }
+    for (const prop of refsNode.children ?? []) {
+        if (prop.type !== 'property') { continue; }
+        const keyNode = prop.children?.[0];
+        const valNode = prop.children?.[1];
+        if (!keyNode || !valNode || valNode.type !== 'object') { continue; }
+        const slug = String(keyNode.value);
+        const logicalNode = findNodeAtLocation(valNode, ['connection', 'connectionReferenceLogicalName']);
+        if (!logicalNode || logicalNode.type !== 'string') {
+            continue;
+        }
+        const logical = String(logicalNode.value);
+        if (!ctx.connectionRefKeys.has(logical)) {
+            out.push(diag('connectionKeyDeclared', 'error',
+                `connectionReferences.${slug}.connection.connectionReferenceLogicalName '${logical}' is not declared in this solution's connection references.`,
+                ['properties', 'connectionReferences', slug, 'connection', 'connectionReferenceLogicalName'],
+                logicalNode));
+        }
+    }
 }
 
 /** Run rules that need a global view of the definition (counts, scope presence, error handling). */
@@ -463,8 +515,19 @@ function runRulesForAction(
     const connNameNode = findNodeAtLocation(a.node, ['inputs', 'host', 'connectionName']);
     if (connNameNode && connNameNode.type === 'string') {
         const key = String(connNameNode.value);
-        if (ctx.connectionRefKeys) {
-            if (!ctx.connectionRefKeys.has(key)) {
+        const apiIdNode = findNodeAtLocation(a.node, ['inputs', 'host', 'apiId']);
+        const apiId = apiIdNode?.type === 'string' ? String(apiIdNode.value) : undefined;
+        const haveLogical = ctx.connectionRefKeys && ctx.connectionRefKeys.size > 0;
+        const haveConnector = ctx.connectorIds && ctx.connectorIds.size > 0;
+        if (haveLogical || haveConnector) {
+            const matchesLogical = haveLogical && ctx.connectionRefKeys!.has(key);
+            // Raw clientdata stores the connector slug in `connectionName` and
+            // the full connector id in `host.apiId`. Treat the action as
+            // bound to a declared reference when either side resolves.
+            const matchesConnector = haveConnector && apiId
+                ? ctx.connectorIds!.has(apiId)
+                : false;
+            if (!matchesLogical && !matchesConnector) {
                 out.push(diag('connectionKeyDeclared', 'error',
                     `Action '${a.name}' references connection '${key}' which is not declared in this solution's connection references.`,
                     [...a.path, 'inputs', 'host', 'connectionName'], connNameNode));

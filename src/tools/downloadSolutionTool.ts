@@ -38,8 +38,8 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
             confirmationMessages: {
                 title: 'Download solution',
                 message: new vscode.MarkdownString(
-                    `This will export **${name}** from the selected Power Platform environment ` +
-                    `and unpack the flow definitions into the workspace. ` +
+                    `This will download flows from **${name}** in the selected Power Platform environment ` +
+                    `into the workspace via the Dataverse API. ` +
                     `If the local copy has unsaved changes, you'll be prompted before they're overwritten.`
                 )
             }
@@ -58,7 +58,7 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
             await downloadSolution(this.pac, target.solution, this.state, this.auth, this.output);
             this.tree.refresh();
             return text(
-                `Downloaded '${target.solution.SolutionUniqueName}' and unpacked its flows into the workspace.`
+                `Downloaded '${target.solution.SolutionUniqueName}' (flows pulled via the Dataverse API).`
             );
         } catch (e: any) {
             return text(`Download failed: ${e?.message ?? e}`);
