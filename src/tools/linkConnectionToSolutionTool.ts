@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../pac/AuthService';
 import { PinnedSolutionService } from '../pac/PinnedSolutionService';
-import { FlowTreeProvider, SolutionInfo } from '../tree/FlowTreeProvider';
+import { FlowTreeProvider } from '../tree/FlowTreeProvider';
 import { addConnectionReferenceToSolution } from '../commands/addConnectionToSolution';
 
 interface LinkConnectionToSolutionInput {
@@ -60,14 +60,14 @@ export class LinkConnectionToSolutionTool
                 return text('Missing `connectionReferenceLogicalName`. Pass the logical name from the listConnections tool.');
             }
 
-            const resolved = await this.resolveSolution(options.input?.solutionName);
+            const resolved = await this.resolveSolutionUniqueName(options.input?.solutionName);
             if ('error' in resolved) {
                 return text(resolved.error);
             }
 
             const result = await addConnectionReferenceToSolution(this.auth, this.output, {
                 connectionReferenceLogicalName: logicalName,
-                solutionUniqueName: resolved.solution.SolutionUniqueName
+                solutionUniqueName: resolved.solutionUniqueName
             });
             this.tree.refresh();
             const display = result.displayName ? ` (${result.displayName})` : '';
@@ -79,27 +79,29 @@ export class LinkConnectionToSolutionTool
         }
     }
 
-    private async resolveSolution(
+    /**
+     * Resolve the target solution to a unique name without round-tripping
+     * `pac solution list` when avoidable. Strategy:
+     *   1. No `requested` name + a pinned solution → use the pinned unique
+     *      name directly. Dataverse will reject the AddSolutionComponent call
+     *      if it has gone stale.
+     *   2. `requested` name provided → assume it is already the unique name
+     *      (the common case from the model). Only fall back to listing
+     *      solutions when Dataverse later rejects it as friendly-name-only;
+     *      that surfaces as a clear error from `addSolutionComponent`.
+     */
+    private async resolveSolutionUniqueName(
         requested: string | undefined
-    ): Promise<{ solution: SolutionInfo } | { error: string }> {
-        const solName = requested?.trim() || this.pinnedName();
-        if (!solName) {
-            return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName`.' };
+    ): Promise<{ solutionUniqueName: string } | { error: string }> {
+        const explicit = requested?.trim();
+        if (explicit) {
+            return { solutionUniqueName: explicit };
         }
-        let sols: SolutionInfo[];
-        try {
-            sols = await this.tree.listSolutions();
-        } catch (e: any) {
-            return { error: `Could not list solutions: ${e?.message ?? e}. Sign in and select an environment first.` };
+        const pinned = this.pinnedName();
+        if (pinned) {
+            return { solutionUniqueName: pinned };
         }
-        const sLower = solName.toLowerCase();
-        const solution =
-            sols.find(s => s.SolutionUniqueName.toLowerCase() === sLower) ??
-            sols.find(s => (s.FriendlyName ?? '').toLowerCase() === sLower);
-        if (!solution) {
-            return { error: `No solution named '${solName}' found.` };
-        }
-        return { solution };
+        return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName`.' };
     }
 
     private pinnedName(): string | undefined {

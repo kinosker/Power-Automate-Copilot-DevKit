@@ -56,8 +56,12 @@ No tool calls required.
 
 1. Call `#listConnections` with `connectorIdContains: "<token>"`
    (e.g. `shared_sharepointonline`).
-2. If one or more references come back, present them to the user
-   (logical name + display name + connectorId) and ask which to use.
+2. If one reference comes back, surface it for confirmation
+   (logical name + display name + connectorId).
+   If **two or more** come back, you MUST list every match and ask the
+   user to pick. Never auto-select — not the first, not the
+   most-recently-created, not the one that "looks right". The user
+   chooses, full stop.
 3. After the user picks, add a new entry to
    `properties.connectionReferences` keyed by a fresh logical key
    (e.g. `shared_sharepointonline_1`, matching the pattern of existing
@@ -84,10 +88,12 @@ If the user says "none of these match", fall through to Stage C.
 5. If still empty, ask the user to either repeat the create step
    ("not seeing it yet — want to try the connector picker again?") or
    abort the edit. **Do not proceed with a fabricated key.**
-6. On a hit, ask the user to confirm the freshly created reference
-   (when there is more than one match), then **automatically** call
-   `#linkConnectionToSolution` for it — no extra prompt from you; the
-   tool's own modal is the user's checkpoint.
+6. On a hit, ask the user to confirm the freshly created reference.
+   If more than one match comes back, list them all and let the user
+   pick — do not assume the newest one is theirs. Once the user has
+   confirmed/picked, **automatically** call `#linkConnectionToSolution`
+   for it — no extra prompt from you; the tool's own modal is the
+   user's checkpoint.
 7. Add the entry to `properties.connectionReferences` and write the
    action exactly as in Stage B step 5.
 
@@ -122,6 +128,9 @@ A complete entry:
 
 - Never invent a `connectionReferenceLogicalName`. Use one returned by
   `#listConnections`.
+- When `#listConnections` returns more than one match, always ask the
+  user to choose. Never pick on their behalf, even if one looks like
+  an obvious best fit.
 - Never set `inputs.host.connectionName` to a connection GUID or to a
   key that does not exist in `properties.connectionReferences`. The
   linter rejects unknown keys (`connectionKeyDeclared`).

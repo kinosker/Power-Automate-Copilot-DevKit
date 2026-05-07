@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AuthService } from '../pac/AuthService';
 import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
+import { refreshConnectionReferenceManifest } from '../pac/refreshConnectionReferences';
 import { assertSafeSolutionName } from '../pac/validation';
 
 export interface AddConnectionToSolutionResult {
@@ -62,6 +63,11 @@ export async function addConnectionReferenceToSolution(
         ref.id,
         componentType
     );
+
+    // Refresh the local connection-reference manifest so subsequent flow
+    // edits (and the linter) immediately see the newly attached reference
+    // without waiting for the next full Download Solution.
+    await refreshConnectionReferenceManifest(client, args.solutionUniqueName, output);
 
     return {
         logicalName: args.connectionReferenceLogicalName,

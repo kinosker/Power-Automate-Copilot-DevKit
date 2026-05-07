@@ -6,6 +6,7 @@ import { DataverseAuth } from '../pac/DataverseAuth';
 import { DataverseClient } from '../pac/DataverseClient';
 import { writeBaseline } from '../pac/FlowManifest';
 import { findExistingFlowFile, flowFileName, prettyClientData } from '../pac/flowFile';
+import { refreshConnectionReferenceManifest } from '../pac/refreshConnectionReferences';
 import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 
@@ -23,8 +24,9 @@ function workspaceRoot(): string {
  * baseline with the live `clientdata`.
  *
  * Limitations (vs. a full `Download Solution`):
- *   * Only the flow definition is refreshed. Connection references and
- *     solution metadata are NOT re-synced.
+ *   * Only the flow definition is refreshed (plus the solution's
+ *     connection-reference manifest). Other solution metadata is not
+ *     re-synced.
  *   * The folder must already exist (i.e. an initial download must have run
  *     at least once for this solution).
  *   * New flows added to the solution server-side will not appear; that
@@ -94,6 +96,11 @@ export async function refreshFlowFromServer(
     const fileText = prettyClientData(live.clientdata);
     await fs.writeFile(target, fileText, 'utf8');
     await writeBaseline(root, solution.SolutionUniqueName, flow.WorkflowId!, live.clientdata);
+
+    // Also refresh the solution's connection-reference manifest so the
+    // linter and other consumers stay in sync if a CR was added/removed
+    // server-side since the last full download.
+    await refreshConnectionReferenceManifest(client, solution.SolutionUniqueName, output);
 
     output.appendLine(`[refresh-flow] refreshed '${label}' (${fileText.length} bytes).`);
     vscode.window.showInformationMessage(`Pulled '${label}' from server.`);
