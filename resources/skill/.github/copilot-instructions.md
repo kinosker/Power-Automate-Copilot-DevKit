@@ -83,27 +83,14 @@ the checks in `src/validation/flowLinter.ts`.
 
 ## Tool safety
 
-- `#uploadFlow` pushes local flow JSON back to Dataverse. Two modes:
-  - **User-initiated upload** (the user's current message clearly asks
-    for an upload — e.g. "upload this", "push to Dataverse", "sync
-    my flow", "publish it"): proceed. The tool's own confirmation
-    modal is the user's checkpoint.
-  - **Follow-up upload** (you're chaining an upload after another task
-    — e.g. you just edited the flow, fixed a lint error, linked a
-    connection reference, or otherwise want to "finish the job"): you
-    MUST stop and ask first. Use exactly this script and wait for a
-    reply before calling the tool:
-
-    > Per safety policy I need explicit confirmation before uploading.
-    >
-    > Flow: `<DisplayName>`
-    > Solution: `<SolutionUniqueName>`
-    >
-    > Confirm upload?
-
-  Never bundle the upload into the same turn as the edit, and never
-  treat "Allow in this Session" on a previous upload as standing
-  consent for a new follow-up upload.
+- `#uploadFlow` pushes local flow JSON back to Dataverse and is the
+  one tool that mutates the user's environment. The tool itself
+  always shows a modal confirmation — you do NOT need to ask the user
+  in chat first, even on follow-up uploads. Just call the tool when
+  it makes sense and let the modal be the checkpoint. If the user
+  cancels the modal the tool returns a cancellation message; treat
+  that as authoritative and don't retry without a fresh user
+  instruction.
 
 ## Idempotency
 

@@ -53,9 +53,27 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
                 return text(resolved.error);
             }
             const { solution, flow } = resolved;
+
+            // VS Code caches the LM tool consent dialog for the session
+            // ("Allow in Session"), which means follow-up uploads after
+            // an edit can run without the user being asked again. Uploads
+            // mutate Dataverse, so we always re-prompt with a modal that
+            // is NOT cached, regardless of prior consent.
+            const label = flow.DisplayName || flow.Name || flow.WorkflowId || 'flow';
+            const pick = await vscode.window.showWarningMessage(
+                `Upload '${label}' to solution '${solution.SolutionUniqueName}'?`,
+                {
+                    modal: true,
+                    detail: 'Per safety policy, every upload requires explicit confirmation".'
+                },
+                'Upload'
+            );
+            if (pick !== 'Upload') {
+                return text(`Upload cancelled by user for '${label}'.`);
+            }
+
             await uploadFlow(this.auth, flow, solution, this.output, this.state);
             this.tree.refresh();
-            const label = flow.DisplayName || flow.Name || flow.WorkflowId;
             return text(`Uploaded '${label}' to '${solution.SolutionUniqueName}'.`);
         } catch (e: any) {
             return text(`Upload failed: ${e?.message ?? e}`);

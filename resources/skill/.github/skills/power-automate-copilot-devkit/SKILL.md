@@ -37,22 +37,11 @@ so the assistant's suggestions and the extension's diagnostics agree.
 
 ## Anchor Patterns
 
-- **Upload requires explicit permission for follow-ups** — `#uploadFlow`
-  pushes local flow JSON back to Dataverse. If the user's *current*
-  message explicitly asks to upload/push/publish/sync, just proceed.
-  But if the upload is a follow-up to another task (you edited the
-  flow, fixed a lint, linked a CR, etc.), STOP and ask using this
-  exact script, then wait for a reply:
-
-  > Per safety policy I need explicit confirmation before uploading.
-  >
-  > Flow: `<DisplayName>`
-  > Solution: `<SolutionUniqueName>`
-  >
-  > Confirm upload?
-
-  "Allow in this Session" from a prior upload is not standing consent
-  for a new follow-up upload.
+- **`#uploadFlow` is self-confirming** — the tool always opens a modal
+  before pushing to Dataverse, so you don't need to ask the user in
+  chat first. Call it when it makes sense; if the user cancels the
+  modal, treat that as a hard stop and don't retry without new
+  instructions.
 - **Try block via `runAfter`** — there is no `try/catch` keyword; emulate
   it with a `Scope` plus a sibling `Scope` whose `runAfter` is
   `{ "<TryScope>": ["Failed", "TimedOut"] }`. Inspect failures inside the
