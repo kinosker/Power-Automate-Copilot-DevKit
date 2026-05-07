@@ -4,6 +4,37 @@ applyTo: "**/Workflows/**/*.json,**/workflows/**/*.json"
 
 # Connection-Reference Resolution Protocol
 
+## STOP — read this before calling `#listConnections`
+
+If `#listConnections` returns **more than one** match, you MUST stop
+and ask the user to choose. No exceptions:
+
+- Do not pick the first result.
+- Do not pick the most-recently-created.
+- Do not pick the one with the "plainest" or "most obvious" name.
+- Do not pick "the only one without a suffix".
+- Do not narrate a choice ("I'll use X") and then proceed. Asking
+  means **stop and wait for a reply** before any further tool call
+  or file edit.
+
+### Wrong (do not do this)
+
+> I found 5 Gmail connection references. I'll use
+> `new_sharedgmail_6f2f2` (the first plain "Gmail" one). Let me wire
+> up the email action.
+
+### Right
+
+> I found 5 Gmail connection references in this environment. Which
+> one should I wire the email action to?
+>
+> 1. `new_sharedgmail_6f2f2` — "Gmail" — `/providers/.../shared_gmail`
+> 2. `new_sharedgmail_a1b2c` — "Gmail (Personal)" — `/providers/.../shared_gmail`
+> 3. …
+
+Then wait. The same rule applies to Stage C after `#createConnections`:
+if polling returns multiple matches, ask — do not assume the newest
+one is the one the user just made.
 Applies whenever you are about to add (or rewire) an `OpenApiConnection`
 or `OpenApiConnectionWebhook` action in an unpacked flow JSON. Connector
 actions reach the runtime through a *connection reference*, never a raw

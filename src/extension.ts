@@ -14,6 +14,7 @@ import { assertSafeSolutionName, getSolutionsRoot } from './pac/validation';
 import { PinnedSolutionService } from './pac/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
 import { lintFlowFile } from './validation/runLint';
+import { ConnectionReferenceService } from './pac/ConnectionReferenceService';
 import { DownloadSolutionTool } from './tools/downloadSolutionTool';
 import { UploadFlowTool } from './tools/uploadFlowTool';
 import { ViewFlowTool } from './tools/viewFlowTool';
@@ -108,6 +109,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     flowWatcher.onDidCreate(invalidateFromUri);
     flowWatcher.onDidDelete(invalidateFromUri);
     context.subscriptions.push(flowWatcher);
+
+    // Watch the per-solution connection-references manifest. When it changes
+    // (e.g. after linking a new CR), re-lint every open flow JSON in that
+    // solution so Problems reflect the new key/connector set immediately.
+    const crWatcher = vscode.workspace.createFileSystemWatcher(
+        `**/${flowsRoot}/*/Others/connection-references.json`
+    );
+    const relintSolutionFlows = (manifestUri: vscode.Uri) => {
+        const solutionFolder = path.dirname(path.dirname(manifestUri.fsPath));
+        ConnectionReferenceService.clearCache(solutionFolder);
+        const workflowsDir = path.join(solutionFolder, 'Workflows').toLowerCase();
+        for (const doc of vscode.workspace.textDocuments) {
+            if (doc.uri.scheme !== 'file') { continue; }
+            const p = doc.uri.fsPath;
+            if (p.toLowerCase().startsWith(workflowsDir) && p.toLowerCase().endsWith('.json')) {
+                scheduleLint(p);
+            }
+        }
+    };
+    crWatcher.onDidChange(relintSolutionFlows);
+    crWatcher.onDidCreate(relintSolutionFlows);
+    crWatcher.onDidDelete(relintSolutionFlows);
+    context.subscriptions.push(crWatcher);
 
     // Background pac presence check; non-blocking.
     void (async () => {
