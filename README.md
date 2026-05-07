@@ -5,13 +5,20 @@ Power Automate Copilot DevKit brings Power Automate cloud flow editing into VS C
 - Download and edit flows locally as readable JSON, then validate, compare, and upload changes back with drift checks and backups.
 - Install bundled GitHub Copilot (GHCP) skills so Copilot can help edit flow JSON, expressions, error handling, and performance patterns directly in your workspace.
 
-This README has two parts:
+## Features
 
-- User Guide: install the VSIX and use the extension.
-- Developer Guide: build, debug, package, and extend the code.
+### GHCP Skills & Static Analysis
+- GHCP skills help Copilot generate higher-quality Power Automate JSON, expressions, error-handling patterns, and performance-optimized designs.
+- Static analysis and linting detect issues such as invalid `runAfter` targets, missing connection references, foreach race conditions, missing error handling, platform limits, and expression pitfalls.
 
-# User Guide
-
+### Flow Lifecycle & ALM Operations
+- Download flows as editable JSON under `solutions/<solution-name>/Workflows/`.
+- Upload flows with smart validation, including server drift detection, diff review, remote backup, and connection-reference checks.
+- Compare a local flow with the server copy before uploading.
+- Pull a server flow and discard local changes when the cloud version should win.
+- List and link connection references to support environment-specific connections.
+- Open flows or solutions directly in the Power Automate and Power Apps maker portals.
+  
 ## Installation Guide
 
 ### Prerequisites
@@ -26,31 +33,8 @@ Before installing the extension, make sure you have:
 
 Install `pac` from the Microsoft documentation: https://learn.microsoft.com/power-platform/developer/cli/introduction
 
-### Install From VSIX
-
-1. Get the extension `.vsix` file, for example `power-automate-copilot-devkit-0.1.0.vsix`.
-2. Open VS Code.
-3. Open the Extensions view.
-4. Select the `...` menu in the Extensions view.
-5. Choose `Install from VSIX...`.
-6. Select the `.vsix` file.
-7. Reload VS Code if prompted.
-8. Confirm that the Power Automate lightning icon appears in the Activity Bar.
-
-If `pac` is not on `PATH`, set `powerAutomateCopilotDevKit.pacPath` to the full path of the Power Platform CLI executable.
 
 ## Usage Guide
-
-### Features
-
-- Download flows as editable JSON under `solutions/<solution-name>/Workflows/`.
-- Upload a flow with smart validation, server drift detection, diff review, remote backup, and connection-reference checks.
-- Static analysis and linting warn about flow shape issues, invalid `runAfter` targets, missing connection references, foreach race risks, missing error handling, platform limits, and expression pitfalls.
-- GHCP skills help Copilot generate better Power Automate JSON, expressions, error handling, and performance patterns.
-- Compare a local flow with the server copy before uploading.
-- Pull a server flow and discard local changes when the cloud copy should win.
-- Open the flow or solution in the Power Automate and Power Apps maker portals.
-- List and link connection references when a flow needs environment-specific connections.
 
 ### Initial Setup
 
@@ -181,39 +165,6 @@ Use this section when you want to build, debug, package, or extend the extension
 | `schemas/` | JSON schema used for `Workflows/*.json` validation. |
 | `resources/skill/` | Bundled GHCP skill docs copied into user workspaces. |
 
-## Build And Debug
-
-Install dependencies:
-
-```powershell
-npm install
-```
-
-Build the extension bundle:
-
-```powershell
-npm run build
-```
-
-Run TypeScript checking:
-
-```powershell
-npm run compile
-```
-
-Watch and rebuild during development:
-
-```powershell
-npm run watch
-```
-
-Package a VSIX:
-
-```powershell
-npm run package
-```
-
-Press F5 in VS Code to launch the Extension Development Host.
 
 ## How To Extend
 
@@ -268,12 +219,3 @@ Press F5 in VS Code to launch the Extension Development Host.
 - Respect untrusted workspace behavior for `pacPath` and `solutionsRoot`.
 - Prefer existing command and service paths for GHCP tools so agent-mode behavior matches the UI.
 - Do not bypass `FlowManifest` when changing download, upload, drift, backup, or baseline behavior.
-
-## Developer Command Reference
-
-| Command | Purpose |
-|---|---|
-| `npm run build` | Bundle `src/extension.ts` into `dist/extension.js` with esbuild. |
-| `npm run watch` | Run esbuild in watch mode with sourcemaps. |
-| `npm run compile` | Run `tsc -p ./ --noEmit`. |
-| `npm run package` | Build a VSIX package with `vsce package`. |
