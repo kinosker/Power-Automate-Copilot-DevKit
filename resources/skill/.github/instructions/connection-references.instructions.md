@@ -70,8 +70,8 @@ the connector you need to its substring before calling tools:
 | Approvals | `shared_approvals` |
 | HTTP with Microsoft Entra | `shared_webcontents` |
 
-Unknown connector? Pull the substring from a sibling action in the same
-flow (look at any existing `inputs.host.apiId`) or ask the user.
+Unknown connector? Pull the substring from a sibling action in the
+same flow (look at any existing `inputs.host.apiId`) or ask the user.
 
 ## Stage A — Reference already declared
 

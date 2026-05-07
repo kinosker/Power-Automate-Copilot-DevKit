@@ -37,6 +37,58 @@ Any action whose `type` matches `OpenApiConnection*` must populate
 - `inputs.host.operationId` — the connector's operation id
 - `inputs.parameters` — an object, possibly empty
 
+## Verify operations and parameters from connector docs
+
+Before adding or editing a connector action, look up the connector's
+reference page at `https://learn.microsoft.com/en-us/connectors/<slug>/`
+(the `<slug>` matches the suffix of `inputs.host.apiId` after
+`shared_` — e.g. `shared_excelonlinebusiness` → `/connectors/excelonlinebusiness/`,
+`shared_gmail` → `/connectors/gmail/`).
+
+Use the page to confirm three things, in order:
+
+1. **The action exists.** The page lists every action under "Actions"
+   with its display name and `Operation ID`. The `Operation ID` is
+   what goes in `inputs.host.operationId` — copy it verbatim,
+   case-sensitive (e.g. `CreateTable`, not `createtable` or
+   `Create_table`).
+2. **Required parameters.** The "Parameters" table marks each input
+   with a `Required` column. Every row marked `True` MUST appear in
+   `inputs.parameters` keyed by the row's `Key` (NOT the display
+   `Name`). Optional rows may be omitted.
+3. **Parameter types.** Match the `Type` column. `string` → JSON
+   string; `integer`/`number` → JSON number; `boolean` → JSON
+   boolean; `array`/`object` → matching JSON shape. Don't quote
+   numbers or booleans.
+
+Worked example — Excel Online (Business) → Create table
+(`/connectors/excelonlinebusiness/#create-table`):
+
+```jsonc
+"Create_table": {
+  "type": "OpenApiConnection",
+  "inputs": {
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+      "connectionName": "shared_excelonlinebusiness_1",
+      "operationId": "CreateTable"
+    },
+    "parameters": {
+      "source": "me",                // Location, required
+      "drive": "<driveId>",          // Document Library, required
+      "file": "<fileId>",            // File, required
+      "Range": "A1:D1",              // Table range, required
+      "TableName": "Customers",      // optional
+      "ColumnsNames": "Id;Name;Email" // optional
+    }
+  },
+  "runAfter": {}
+}
+```
+
+If the page doesn't list the action, or the action's `Operation ID`
+isn't on the page, stop and tell the user — don't invent one.
+
 ## Walking nested action maps
 
 These containers each open a fresh `actions` scope; sibling lookups

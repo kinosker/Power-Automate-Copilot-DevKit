@@ -72,27 +72,23 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
             return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName`.' };
         }
 
-        // Resolve solution: match by SolutionUniqueName first, then FriendlyName.
-        let sols: SolutionInfo[];
-        try {
-            sols = await this.tree.listSolutions();
-        } catch (e: any) {
-            return { error: `Could not list solutions: ${e?.message ?? e}. Sign in and select an environment first.` };
-        }
-        const sLower = solName.toLowerCase();
-        const solution =
-            sols.find(s => s.SolutionUniqueName.toLowerCase() === sLower) ??
-            sols.find(s => (s.FriendlyName ?? '').toLowerCase() === sLower);
-        if (!solution) {
-            return { error: `No solution named '${solName}' found.` };
-        }
+        // Skip the `pac solution list --json` round-trip: downstream upload
+        // logic only consumes `SolutionUniqueName`, and the on-disk
+        // `Workflows/` folder is the source of truth for flows. We assume
+        // `solName` is already the unique name (the common case from the
+        // pinned solution or the model). If it turns out to be a friendly
+        // name, the missing local folder check below surfaces a clear error.
+        const solution: SolutionInfo = {
+            SolutionUniqueName: solName,
+            FriendlyName: solName
+        } as SolutionInfo;
 
         // Resolve flow inside the unpacked local solution folder.
         const flows = await this.tree.listFlows(solution);
         if (flows.length === 0) {
             return {
                 error: `Solution '${solution.SolutionUniqueName}' has no flows locally. ` +
-                    `Run the download tool first.`
+                    `Run the download tool first (or check that '${solName}' is the solution unique name, not the friendly name).`
             };
         }
 
