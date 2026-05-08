@@ -75,7 +75,8 @@ Key impact points:
 1. Open VS Code.
 2. Search for `Power Automate Copilot` in the Extensions view.
 3. Install `Power Automate Copilot DevKit`.
-4. Reload VS Code if prompted.
+
+<img width="395" height="194" alt="image" src="https://github.com/user-attachments/assets/9aaf8520-db79-443d-8bdb-112f10c4e31d" />
 
 ### Initial Setup
 
