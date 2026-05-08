@@ -28,42 +28,36 @@ The result is a controlled AI-assisted authoring loop: Copilot helps make the ch
 
 ## Impact Metrics
 
-| Metric | Before | With Power Automate Copilot DevKit | Impact |
-|---|---|---|---|
-| AI guidance | General Copilot prompts with limited Power Automate context | GHCP skills and instructions tailored to flow JSON, expressions, connection references, and best practices | Produces more consistent AI-assisted flow edits |
-| AI change control | Manual review of raw AI output | Static analysis, schema checks, diagnostics, and guarded upload after AI edits | Reduces risk from unmanaged AI-generated changes |
-| Single-flow edit path | Export solution, unpack, locate flow JSON, edit, repack, import solution | Download, edit, validate, upload one flow from VS Code | Removes manual solution packaging from routine flow edits |
-| Upload scope | Full solution import | Targeted flow definition update | Lowers blast radius for small changes |
-| Validation timing | Issues often found after import or runtime testing | JSON parsing and static analysis run before upload | Catches common defects earlier |
-| Server drift awareness | Manual or absent comparison | Baseline-to-live drift detection before overwrite | Reduces accidental overwrites |
-| Recovery path | Manual backups or solution history | Remote flow backup written before upload | Improves rollback readiness |
-| Connection readiness | Often discovered during import or runtime | Connection reference checks before upload | Reduces environment-specific deployment surprises |
+The DevKit is designed to reduce effort in the repeated edit, validate, upload, and fix loop for Power Automate flows.
 
-Suggested adoption metrics to track during rollout:
+| Area | How Effort Is Reduced | Estimated Effort Reduction |
+|---|---|---|
+| AI guidance | Copilot receives Power Automate-specific guidance for flow JSON, expressions, connection references, error handling, and performance patterns. | 30-40% less prompt rewriting and manual explanation |
+| Static analysis with schema checks | JSON parsing, schema validation, and flow-specific linting catch common issues before upload. | 40-60% less manual review for structural issues |
+| Error analysis and auto fix with AI | Upload errors from VS Code are available directly to Copilot, so the error can be analyzed and fixed in the local flow file. | 50-70% less trial-and-error during upload fixes |
+| Single-flow upload | A changed flow can be uploaded directly from VS Code without browser-based export, repack, and import cycles. | 60-80% fewer manual ALM steps for small flow edits |
 
-- Percentage of flow edits completed with Copilot assistance.
-- Number of GHCP skill-guided prompts used for flow changes, expressions, or error handling.
-- Static analysis findings caught after AI-assisted edits and before upload.
-- Average time to complete a small flow edit.
-- Number of manual export/import steps avoided per flow update.
-- Drift conflicts detected before overwrite.
-- Uploads blocked or paused due to missing connection references.
-- Flow rollback events supported by generated backups.
+Key impact points:
+
+- AI Guidance helps Copilot make flow-aware changes without repeatedly explaining Power Automate authoring rules.
+- Static Analysis with Schema checks finds invalid JSON, missing references, and risky flow patterns before upload.
+- Error analysis and auto fix with AI shortens the upload failure loop: when upload is run from VS Code and an error occurs, Copilot can see the error context, update the local flow JSON, and help retry the upload.
+- Previously, makers often had to upload in the browser, read the error, copy and paste it into chat, make a fix, upload again, and repeat for the next error.
 
 ## Before Vs After
 
 | Workflow Area | Before | After |
 |---|---|---|
-| AI assistance | Copilot can help, but prompts may be generic and disconnected from Power Automate authoring rules. | GHCP skills give Copilot Power Automate-specific guidance for flow JSON, expressions, connection references, error handling, and performance. |
-| AI governance | AI-generated changes depend mostly on manual inspection. | AI changes are followed by static analysis, diagnostics, drift checks, connection checks, and guarded upload. |
-| Downloading a flow | Export the solution from Power Platform, unpack the solution, then find the flow JSON manually. | Select the environment and solution, then download the solution so flows appear as editable JSON in VS Code. |
-| Editing a flow | Edit extracted JSON with limited local guidance and high risk of structural mistakes. | Edit JSON in VS Code with schema support, static analysis, and Copilot skill guidance. |
-| AI-assisted changes | The user must repeatedly explain Power Automate patterns in each prompt. | The workspace carries reusable GHCP skill docs and instructions that help Copilot follow expected patterns. |
-| Validating changes | Problems may surface during import, after deployment, or at runtime. | Linting and diagnostics identify common issues before upload. |
-| Uploading a change | Repack the solution and import it back into Power Platform. | Upload the edited flow definition directly to Dataverse. |
+| AI capabilities | Copilot can help, but prompts may be generic and disconnected from Power Automate authoring rules. | GHCP skills give Copilot Power Automate-specific guidance for flow JSON, expressions, connection references, error handling, retry behavior, and performance patterns. |
+| AI-assisted changes | The maker must repeatedly explain Power Automate structure and expected patterns in each prompt. | The workspace carries reusable skill docs and instructions so Copilot can produce more consistent, flow-aware edits. |
+| AI change validation | AI-generated changes depend mostly on manual inspection. | AI changes are checked with schema validation, static analysis, diagnostics, drift checks, connection checks, and guarded upload. |
+| Upload error loop | Upload in the browser, read the first error, copy and paste it into chat, make a fix, upload again, and repeat when another error appears. | Upload from VS Code, expose the error directly to Copilot, let AI analyze the failure, update the local flow JSON, and retry from the same workspace. |
+| Validating changes | Problems may surface during import, after deployment, or at runtime. | JSON parsing, schema checks, and flow linting identify common issues before upload. |
+| Uploading a change | Repack the solution and import it back into Power Platform. | Upload the edited flow definition directly to Dataverse without repacking the full solution. |
 | Handling server changes | Makers may overwrite newer server edits without noticing. | Drift detection warns when the live flow differs from the downloaded baseline. |
 | Recovery | Rollback depends on manual backups or solution history. | The current remote flow JSON is backed up before upload. |
 | Connection references | Missing or unbound references may be found late. | Connection references can be checked, listed, created, and linked from the VS Code workflow. |
+| End-to-end VS Code workflow | Flow work moves between browser export/import, local files, chat, manual validation, and portal troubleshooting. | Download, edit with AI guidance, validate, compare, fix upload errors, manage connection references, back up, and upload from VS Code. |
 
 ## Installation
 
