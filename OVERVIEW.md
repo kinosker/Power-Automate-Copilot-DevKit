@@ -4,7 +4,7 @@
 
 Power Automate Copilot DevKit turns VS Code into an AI-assisted editing workspace for Power Automate cloud flows. It combines GitHub Copilot skills, Power Automate-specific instructions, local static analysis, and guarded Dataverse upload so makers and developers can use AI to modify flows with more context and control.
 
-Instead of asking a general AI model to edit complex flow JSON from scratch, the DevKit gives GitHub Copilot domain guidance for flow structure, expressions, connection references, error handling, retry behavior, and performance patterns. Flows can be downloaded as readable JSON, edited with Copilot in VS Code, validated before upload, compared against the live server copy, and uploaded back to Dataverse without manually repacking and importing an entire solution.
+Instead of asking a general AI model to edit complex flow JSON from scratch, the DevKit gives GitHub Copilot guidance for flow structure, expressions, connection references, error handling, retry behavior, and performance patterns. Flows can be downloaded as readable JSON, edited with Copilot in VS Code, validated before upload, compared against the live server copy, and uploaded back to Dataverse without manually repacking and importing an entire solution.
 
 The result is a controlled AI-assisted authoring loop: Copilot helps make the change, static analysis checks the result, and the upload pipeline protects the live flow with drift detection, connection checks, and backups.
 
@@ -68,6 +68,7 @@ Key impact points:
 - Microsoft Power Platform CLI (`pac`) installed and available on `PATH`.
 - Access to a Power Platform environment.
 - An unmanaged Power Platform solution that contains the cloud flow to edit.
+   - For a new flow, create a skeletal flow with at least a trigger action step in the solution before using this extension.
 
 ### Install The Extension
 
