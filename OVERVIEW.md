@@ -80,15 +80,47 @@ Key impact points:
 
 ### Initial Setup
 
+<img width="1024" height="601" alt="Initial Setup" src="https://github.com/user-attachments/assets/be048912-a6bb-42e7-a783-58073557d7d0" />
+
 1. Click the Power Automate lightning icon in the VS Code Activity Bar.
-2. Run `Power Automate: Sign In` and complete Power Platform authentication.
-3. Select the target environment.
-4. Select or pin the unmanaged solution that contains the flow.
-5. Install the bundled GHCP flow skill when prompted, or run `Power Automate: Install Flow Skill into Workspace`.
-6. Run `Download Solution (Export + Unpack)`.
-7. Open the downloaded flow JSON under `solutions/<solution-name>/Workflows/`.
-8. Ask Copilot to make flow changes using the installed skill guidance, or edit the JSON manually.
-9. Review diagnostics, validate, compare, and upload the flow when ready.
+2. Select `Sign in to Power Automate...` or run `Power Automate: Sign In`.
+3. Complete the Power Platform sign-in flow.
+4. Select the environment that contains your solution.
+5. Select the solution that contains the flow.
+6. Install the GHCP skills when prompted, or run `Power Automate: Install Flow Skill into Workspace`.
+7. Run `Download Solution (Export + Unpack)` from the pinned solution.
+8. Open the downloaded flow under `solutions/<solution-name>/Workflows/*.json`.
+
+### Editing A Flow
+
+You can edit a flow in two ways:
+
+- Open the flow definition from the Power Automate tree and edit the JSON manually.
+- Ask GitHub Copilot to update the flow JSON using natural language.
+
+Example: Adding an Email action
+
+<img width="1280" height="752" alt="Final - Edit Flow Fast" src="https://github.com/user-attachments/assets/1c3a52f1-04b3-460e-a58d-a03d360c414d" />
+
+
+### Uploading A Flow
+
+ GHCP prompts:
+```text
+Upload Flow
+```
+Example:
+<img width="1280" height="752" alt="Final - Upload Flow Fast" src="https://github.com/user-attachments/assets/082cab41-8e61-4834-8493-7a567a1b7181" />
+
+
+### Viewing A Flow
+
+ GHCP prompts:
+```text
+View Flow
+```
+Example:
+<img width="1280" height="752" alt="Final - View Flow Fast" src="https://github.com/user-attachments/assets/0ca8021c-4047-4482-b2c2-57d657dfb817" />
 
 ## Typical Users
 
