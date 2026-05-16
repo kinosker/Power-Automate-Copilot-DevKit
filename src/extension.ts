@@ -9,6 +9,7 @@ import { registerRemoteContentProvider } from './commands/remoteContent';
 import { openFlowDiff } from './commands/diffFlow';
 import { openFlowInPortal } from './commands/openFlowInPortal';
 import { refreshFlowFromServer } from './commands/refreshFlow';
+import { normalizeOrgUrl } from './platform/DataverseAuth';
 import { assertSafeSolutionName, getSolutionsRoot } from './platform/validation';
 import { PinnedSolutionService } from './platform/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
@@ -535,38 +536,48 @@ async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | un
         }
         await auth.signIn();
     }
-    const envs = await vscode.window.withProgress(
-        {
-            location: vscode.ProgressLocation.Notification,
-            title: 'Power Automate: loading environments…',
-            cancellable: false
-        },
-        () => auth.listEnvironments()
-    );
-    if (envs.length === 0) {
-        vscode.window.showWarningMessage('No environments returned by the Power Platform Management API.');
+    return promptManualEnvironment(auth);
+}
+
+async function promptManualEnvironment(auth: AuthService): Promise<OrgInfo | undefined> {
+    const raw = await vscode.window.showInputBox({
+        prompt: 'Enter environment URL in this format: https://<environment>.crm.dynamics.com/',
+        placeHolder: 'https://<environment>.crm.dynamics.com/',
+        ignoreFocusOut: true,
+        title: 'Power Automate: Set Environment URL',
+        validateInput: (v) => {
+            try {
+                normalizeOrgUrl(v.trim());
+                return null;
+            } catch (e: any) {
+                return (
+                    (e?.message ?? 'Invalid environment URL.') +
+                    ' Required format: https://<environment>.crm.dynamics.com/'
+                );
+            }
+        }
+    });
+    if (!raw) {
         return undefined;
     }
-    const pick = await vscode.window.showQuickPick(
-        envs.map(e => ({
-            label: e.FriendlyName || e.DisplayName || e.EnvironmentName || e.EnvironmentId,
-            description: e.EnvironmentUrl,
-            env: e
-        })),
-        { placeHolder: 'Select a Power Platform environment' }
-    );
-    if (!pick) {
-        return undefined;
-    }
-    await vscode.window.withProgress(
-        {
-            location: vscode.ProgressLocation.Notification,
-            title: 'Power Automate: selecting environment…',
-            cancellable: false
-        },
-        () => auth.selectEnvironment(pick.env as OrgInfo)
-    );
-    return pick.env as OrgInfo;
+    const envUrl = normalizeOrgUrl(raw.trim());
+    const envId = deriveEnvironmentIdFromUrl(envUrl);
+    const env: OrgInfo = {
+        EnvironmentId: envId,
+        EnvironmentUrl: envUrl,
+        DisplayName: envId,
+        FriendlyName: envId,
+        EnvironmentName: envId
+    };
+    await auth.selectEnvironment(env);
+    return env;
+}
+
+function deriveEnvironmentIdFromUrl(orgUrl: string): string {
+    const host = new URL(orgUrl).hostname.toLowerCase();
+    const token = host.split('.')[0] ?? 'environment';
+    const safe = token.replace(/[^a-z0-9_-]/g, '_').slice(0, 64);
+    return safe || 'environment';
 }
 
 export function deactivate(): void {

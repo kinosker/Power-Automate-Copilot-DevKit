@@ -37,8 +37,12 @@ export function normalizeEnvList(data: unknown): OrgInfo[] {
         const o = data as Record<string, unknown>;
         if (Array.isArray(o.Environments)) {
             arr = o.Environments as any[];
+        } else if (Array.isArray(o.environments)) {
+            arr = o.environments as any[];
         } else if (Array.isArray(o.value)) {
             arr = o.value as any[];
+        } else if (Array.isArray(o.items)) {
+            arr = o.items as any[];
         }
     }
     return arr.map(raw => {
@@ -108,11 +112,23 @@ export class AuthService {
     private async getManagementSession(
         opts?: { createIfNone?: boolean; forceNewSession?: boolean; clearSessionPreference?: boolean }
     ): Promise<vscode.AuthenticationSession | undefined> {
-        return vscode.authentication.getSession('microsoft', this.managementScopes, {
-            createIfNone: opts?.createIfNone ?? false,
-            forceNewSession: opts?.forceNewSession ?? false,
-            clearSessionPreference: opts?.clearSessionPreference ?? false
-        });
+        // VS Code treats `createIfNone` and `forceNewSession` as mutually
+        // exclusive options. Build the options object conditionally so we
+        // never send an invalid combination.
+        const sessionOpts: {
+            createIfNone?: boolean;
+            forceNewSession?: boolean;
+            clearSessionPreference?: boolean;
+        } = {};
+        if (opts?.forceNewSession) {
+            sessionOpts.forceNewSession = true;
+        } else if (opts?.createIfNone) {
+            sessionOpts.createIfNone = true;
+        }
+        if (opts?.clearSessionPreference) {
+            sessionOpts.clearSessionPreference = true;
+        }
+        return vscode.authentication.getSession('microsoft', this.managementScopes, sessionOpts);
     }
 
     private async fetchManagementEnvironments(): Promise<OrgInfo[]> {
@@ -127,9 +143,9 @@ export class AuthService {
         // Management API routes and wrappers vary by cloud/version. Try a few
         // known variants and normalize whatever payload shape returns.
         const urls = [
+            'https://api.powerplatform.com/powerapps/environments?api-version=2024-10-01',
             'https://api.powerplatform.com/powerapps/environments?api-version=2022-03-01-preview',
-            'https://api.powerplatform.com/powerapps/environments',
-            'https://api.powerplatform.com/scopes/admin/environments?api-version=2020-08-01'
+            'https://api.powerplatform.com/powerapps/environments?api-version=2021-10-01-preview'
         ];
         let lastErr: unknown;
         for (const url of urls) {
