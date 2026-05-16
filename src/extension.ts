@@ -30,6 +30,7 @@ import {
     commandId,
     lmToolName,
     OUTPUT_CHANNEL_NAME,
+    stateKey,
     SKILL_BUNDLE_VERSION,
     SKILL_SLUG,
     SKILL_VERSION_RELATIVE_PATH,
@@ -534,6 +535,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.window.showWarningMessage('Flow definition not found locally. Download the solution first.');
         }
     });
+
+    // Proactively prompt once per bundle version when an installed workspace
+    // skill looks stale. This catches debug sessions where the user may not
+    // trigger the contextual download/pick commands that also prompt.
+    void promptSkillUpdateOnActivation(context, output, tree);
 }
 
 async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | undefined> {
@@ -725,6 +731,41 @@ async function installFlowSkill(
 }
 
 type SkillInstallStatus = 'missing' | 'outdated' | 'current';
+
+async function promptSkillUpdateOnActivation(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    tree: FlowTreeProvider
+): Promise<void> {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) { return; }
+
+    const status = await getSkillInstallStatus(ws.uri);
+    if (status !== 'outdated') { return; }
+
+    const dismissKey = stateKey(`skillUpdatePromptDismissed.${SKILL_BUNDLE_VERSION}`);
+    if (context.workspaceState.get<boolean>(dismissKey)) {
+        return;
+    }
+
+    const pick = await vscode.window.showInformationMessage(
+        'Update Github Copilot - Power Automate Skills?',
+        {
+            modal: true,
+            detail: 'This workspace has an older Github Copilot - Power Automate skill version.\n Updating keeps Github Copilot - Power Automate aligned with the latest guidance.'
+        },
+        'Update'
+    );
+    if (pick === 'Update') {
+        try {
+            await installFlowSkill(context, output);
+            tree.refresh();
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Install Flow Skill failed: ${e.message ?? e}`);
+        }
+        return;
+    }
+}
 
 async function getSkillInstallStatus(workspaceRoot: vscode.Uri): Promise<SkillInstallStatus> {
     const sentinel = vscode.Uri.joinPath(workspaceRoot, '.github', 'skills', SKILL_SLUG);
