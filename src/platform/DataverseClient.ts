@@ -33,6 +33,15 @@ export interface WorkflowSummary {
     clientdata?: string;
 }
 
+export interface SolutionSummary {
+    solutionid: string;
+    uniquename: string;
+    friendlyname?: string;
+    version?: string;
+    ismanaged?: boolean;
+    modifiedon?: string;
+}
+
 /** Thrown when an `If-Match` ETag check fails (HTTP 412). Caller can branch on this. */
 export class PreconditionFailedError extends Error {
     constructor(message: string) {
@@ -182,6 +191,30 @@ export class DataverseClient {
             this.solutionIdCache.set(solutionUniqueName, id);
         }
         return id;
+    }
+
+    /** List unmanaged solutions visible in the selected environment. */
+    async listUnmanagedSolutions(): Promise<SolutionSummary[]> {
+        const url =
+            `${this.base}/solutions` +
+            `?$select=solutionid,uniquename,friendlyname,version,ismanaged,modifiedon` +
+            `&$filter=${encodeURIComponent('ismanaged eq false')}` +
+            `&$orderby=${encodeURIComponent('modifiedon desc')}`;
+        const headers = await this.authHeaders();
+        this.output.appendLine(`> GET ${redactUrl(url)} (solutions)`);
+        const res = await fetch(url, { method: 'GET', headers });
+        await throwIfError(res, 'GET solutions');
+        const body = (await readJson(res)) as { value?: any[] };
+        return (body.value ?? [])
+            .filter(r => typeof r?.solutionid === 'string' && typeof r?.uniquename === 'string')
+            .map(r => ({
+                solutionid: String(r.solutionid),
+                uniquename: String(r.uniquename),
+                friendlyname: r.friendlyname ? String(r.friendlyname) : undefined,
+                version: r.version ? String(r.version) : undefined,
+                ismanaged: typeof r.ismanaged === 'boolean' ? r.ismanaged : undefined,
+                modifiedon: r.modifiedon ? String(r.modifiedon) : undefined
+            }));
     }
 
     /**

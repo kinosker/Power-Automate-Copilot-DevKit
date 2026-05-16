@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient } from '../platform/DataverseClient';
 
 interface ListConnectionsInput {
     /**

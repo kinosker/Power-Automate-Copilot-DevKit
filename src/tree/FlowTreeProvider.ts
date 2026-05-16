@@ -1,14 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { PacCli } from '../pac/PacCli';
-import { AuthService, OrgInfo } from '../pac/AuthService';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
-import { clientDataEquals, readBaseline, readFlowManifest } from '../pac/FlowManifest';
-import { getSolutionsRoot } from '../pac/validation';
-import { isSolutionFolder } from '../pac/SolutionMeta';
+import { AuthService, OrgInfo } from '../platform/AuthService';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient, WorkflowSummary } from '../platform/DataverseClient';
+import { clientDataEquals, readBaseline, readFlowManifest } from '../platform/FlowManifest';
+import { getSolutionsRoot } from '../platform/validation';
+import { isSolutionFolder } from '../platform/SolutionMeta';
 import { getConfigValue } from '../config';
 import { commandId, SKILL_BUNDLE_VERSION, SKILL_SLUG, SKILL_VERSION_RELATIVE_PATH } from '../constants';
 
@@ -17,7 +16,7 @@ export interface SolutionInfo {
     FriendlyName?: string;
     VersionNumber?: string;
     IsManaged?: boolean;
-    /** Optional metadata pac may surface; used for sorting in the picker. */
+    /** Optional metadata used for sorting in the picker. */
     ModifiedOn?: string;
 }
 
@@ -253,14 +252,13 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     /**
      * Most recent `PinnedSolutionNode` instance returned to VS Code per
      * solution. We need a stable reference to fire `onDidChangeTreeData`
-     * with — firing `undefined` would re-run `pac auth list` and
-     * `pac solution list` for the root and environment levels, which is
+     * with — firing `undefined` would re-run root discovery for the
+     * environment and solution levels, which is
      * wasteful when only the per-flow drift badges have changed.
      */
     private liveSolutionNode = new Map<string, PinnedSolutionNode>();
 
     constructor(
-        private readonly pac: PacCli,
         private readonly auth: AuthService,
         private readonly pins: PinnedSolutionService,
         private readonly output?: vscode.OutputChannel
@@ -355,24 +353,21 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
 
     /** Public so the picker command can list solutions. */
     async listSolutions(): Promise<SolutionInfo[]> {
-        const data = await this.pac.runJson<SolutionInfo[] | { Solutions?: SolutionInfo[] }>([
-            'solution',
-            'list'
-        ]);
-        const arr = Array.isArray(data) ? data : data.Solutions ?? [];
-        // pac surfaces the managed flag under different keys/types depending
-        // on the CLI version: IsManaged, isManaged, Managed, "True"/"False".
-        const isManaged = (s: any): boolean => {
-            const v = s?.IsManaged ?? s?.isManaged ?? s?.Managed ?? s?.managed;
-            if (typeof v === 'boolean') {
-                return v;
-            }
-            if (typeof v === 'string') {
-                return /^true$/i.test(v.trim());
-            }
-            return false;
-        };
-        return arr.filter(s => !isManaged(s));
+        const env = this.auth.getSelectedEnvironment();
+        const orgUrl = env?.EnvironmentUrl;
+        if (!orgUrl) {
+            throw new Error('Select a Power Platform environment first.');
+        }
+        const out = this.output ?? vscode.window.createOutputChannel('Power Automate');
+        const client = this.getDvClient(orgUrl, out);
+        const rows = await client.listUnmanagedSolutions();
+        return rows.map(r => ({
+            SolutionUniqueName: r.uniquename,
+            FriendlyName: r.friendlyname,
+            VersionNumber: r.version,
+            IsManaged: r.ismanaged,
+            ModifiedOn: r.modifiedon
+        }));
     }
 
     async getChildren(element?: Node): Promise<Node[]> {
@@ -500,8 +495,8 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     }
 
     async listFlows(sol: SolutionInfo): Promise<FlowInfo[]> {
-        // This pac version has no `flow list` command, so read flows from the
-        // downloaded solution folder instead. Users see flows after downloading.
+        // Read flows from the downloaded solution folder; users see flows
+        // after downloading the pinned solution.
         const ws = vscode.workspace.workspaceFolders?.[0];
         if (!ws) {
             return [];
@@ -624,9 +619,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
             } finally {
                 this.driftLoading.delete(solutionUniqueName);
                 // Fire the change at the pinned-solution subtree (not the
-                // root) so VS Code only re-fetches the flow list — avoiding
-                // a redundant `pac auth list` + `pac solution list` round
-                // trip just to repaint drift badges.
+                // root) so VS Code only re-fetches the flow list.
                 const node = this.liveSolutionNode.get(solutionUniqueName);
                 this._onDidChange.fire(node);
             }

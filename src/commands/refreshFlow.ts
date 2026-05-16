@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
-import { writeBaseline } from '../pac/FlowManifest';
-import { findExistingFlowFile, flowFileName, prettyClientData } from '../pac/flowFile';
-import { refreshConnectionReferenceManifest } from '../pac/refreshConnectionReferences';
-import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient } from '../platform/DataverseClient';
+import { writeBaseline } from '../platform/FlowManifest';
+import { findExistingFlowFile, flowFileName, prettyClientData } from '../platform/flowFile';
+import { refreshConnectionReferenceManifest } from '../platform/refreshConnectionReferences';
+import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../platform/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 
 function workspaceRoot(): string {

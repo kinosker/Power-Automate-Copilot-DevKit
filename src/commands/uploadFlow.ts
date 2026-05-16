@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient, PreconditionFailedError } from '../pac/DataverseClient';
-import { AuthService } from '../pac/AuthService';
-import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
-import { hashFolder } from '../pac/folderHash';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient, PreconditionFailedError } from '../platform/DataverseClient';
+import { AuthService } from '../platform/AuthService';
+import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../platform/validation';
+import { hashFolder } from '../platform/folderHash';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { lintFlowFile } from '../validation/runLint';
 import {
@@ -17,7 +17,7 @@ import {
     upsertManifestEntry,
     writeBaseline,
     writeRemoteBackup
-} from '../pac/FlowManifest';
+} from '../platform/FlowManifest';
 import { clearRemoteContent, stashRemoteContent } from './remoteContent';
 import { refreshFlowFromServer } from './refreshFlow';
 import { getConfigValue, getExplicitConfigValue } from '../config';

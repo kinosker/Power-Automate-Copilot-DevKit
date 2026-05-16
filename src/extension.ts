@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { PacCli } from './pac/PacCli';
-import { AuthService, OrgInfo } from './pac/AuthService';
+import { AuthService, OrgInfo } from './platform/AuthService';
 import { FlowTreeProvider, SolutionInfo, FlowInfo } from './tree/FlowTreeProvider';
 import { downloadSolution } from './commands/download';
 import { resolveFlowFile, uploadFlow } from './commands/uploadFlow';
@@ -10,11 +9,11 @@ import { registerRemoteContentProvider } from './commands/remoteContent';
 import { openFlowDiff } from './commands/diffFlow';
 import { openFlowInPortal } from './commands/openFlowInPortal';
 import { refreshFlowFromServer } from './commands/refreshFlow';
-import { assertSafeSolutionName, getSolutionsRoot } from './pac/validation';
-import { PinnedSolutionService } from './pac/PinnedSolutionService';
+import { assertSafeSolutionName, getSolutionsRoot } from './platform/validation';
+import { PinnedSolutionService } from './platform/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
 import { lintFlowFile } from './validation/runLint';
-import { ConnectionReferenceService } from './pac/ConnectionReferenceService';
+import { ConnectionReferenceService } from './platform/ConnectionReferenceService';
 import { DownloadSolutionTool } from './tools/downloadSolutionTool';
 import { UploadFlowTool } from './tools/uploadFlowTool';
 import { ViewFlowTool } from './tools/viewFlowTool';
@@ -24,7 +23,7 @@ import { LinkConnectionToSolutionTool } from './tools/linkConnectionToSolutionTo
 import { ListDataverseTablesTool } from './tools/listDataverseTablesTool';
 import { GetDataverseTableMetadataTool } from './tools/getDataverseTableMetadataTool';
 import { GetDataverseOptionSetTool } from './tools/getDataverseOptionSetTool';
-import { DataverseMetadataCache } from './pac/DataverseMetadataCache';
+import { DataverseMetadataCache } from './platform/DataverseMetadataCache';
 import { openCreateConnections } from './commands/createConnections';
 import {
     commandId,
@@ -41,10 +40,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
     context.subscriptions.push(output);
 
-    const pac = new PacCli(output);
-    const auth = new AuthService(pac, context.workspaceState);
+    const auth = new AuthService(context.workspaceState);
     const pins = new PinnedSolutionService(context.workspaceState);
-    const tree = new FlowTreeProvider(pac, auth, pins, output);
+    const tree = new FlowTreeProvider(auth, pins, output);
 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider(TREE_VIEW_ID, tree)
@@ -146,22 +144,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     crWatcher.onDidDelete(relintSolutionFlows);
     context.subscriptions.push(crWatcher);
 
-    // Background pac presence check; non-blocking.
-    void (async () => {
-        const ok = await pac.checkInstalled();
-        if (!ok) {
-            const pick = await vscode.window.showWarningMessage(
-                'Microsoft Power Platform CLI (`pac`) was not found on PATH. Install it to use this extension.',
-                'Open install docs'
-            );
-            if (pick === 'Open install docs') {
-                void vscode.env.openExternal(
-                    vscode.Uri.parse('https://learn.microsoft.com/power-platform/developer/cli/introduction')
-                );
-            }
-        }
-    })();
-
     const register = (id: string, fn: (...args: any[]) => any) =>
         context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
@@ -172,7 +154,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.lm.registerTool(
                 lmToolName('downloadSolution'),
-                new DownloadSolutionTool(pac, tree, context.workspaceState, auth, pins, output)
+                new DownloadSolutionTool(tree, context.workspaceState, auth, pins, output)
             )
         );
         context.subscriptions.push(
@@ -329,7 +311,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // is about to materialize flow JSON locally.
         await promptInstallSkillIfMissing(context, output, tree);
         try {
-            await downloadSolution(pac, target, context.workspaceState, auth, output);
+            await downloadSolution(target, context.workspaceState, auth, output);
             // Auto-pin on successful download so the workspace is locked to it.
             const env = auth.getSelectedEnvironment();
             if (env?.EnvironmentId) {
@@ -562,7 +544,7 @@ async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | un
         () => auth.listEnvironments()
     );
     if (envs.length === 0) {
-        vscode.window.showWarningMessage('No environments returned by pac.');
+        vscode.window.showWarningMessage('No environments returned by the Power Platform Management API.');
         return undefined;
     }
     const pick = await vscode.window.showQuickPick(

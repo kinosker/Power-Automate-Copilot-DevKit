@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
+import { AuthService } from '../platform/AuthService';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
 import { FlowTreeProvider } from '../tree/FlowTreeProvider';
 import { addConnectionReferenceToSolution } from '../commands/addConnectionToSolution';
 
@@ -81,7 +81,7 @@ export class LinkConnectionToSolutionTool
 
     /**
      * Resolve the target solution to a unique name without round-tripping
-     * `pac solution list` when avoidable. Strategy:
+        * environment solution discovery when avoidable. Strategy:
      *   1. No `requested` name + a pinned solution → use the pinned unique
      *      name directly. Dataverse will reject the AddSolutionComponent call
      *      if it has gone stale.

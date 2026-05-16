@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { CompactTable, DataverseMetadataClient } from '../pac/DataverseMetadataClient';
-import { DataverseMetadataCache } from '../pac/DataverseMetadataCache';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { CompactTable, DataverseMetadataClient } from '../platform/DataverseMetadataClient';
+import { DataverseMetadataCache } from '../platform/DataverseMetadataCache';
 
 interface ListDataverseTablesInput {
     /** Case-insensitive substring match against logicalName, displayName, entitySet. */

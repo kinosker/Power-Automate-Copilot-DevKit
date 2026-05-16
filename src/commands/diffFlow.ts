@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
-import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient } from '../platform/DataverseClient';
+import { assertGuid, assertSafeSolutionName, getSolutionsRoot } from '../platform/validation';
 import { FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { resolveFlowFile } from './uploadFlow';
 import { stashRemoteContent } from './remoteContent';

@@ -1,24 +1,23 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { PacCli } from '../pac/PacCli';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient, WorkflowSummary } from '../pac/DataverseClient';
-import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../pac/FlowManifest';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient, WorkflowSummary } from '../platform/DataverseClient';
+import { buildFlowManifest, writeBaseline, writeFlowManifest } from '../platform/FlowManifest';
 import {
     flowFileName,
     prettyClientData,
     workflowIdFromFlowFile
-} from '../pac/flowFile';
+} from '../platform/flowFile';
 import {
     SolutionMeta,
     writeConnectionReferenceManifest,
     writeSolutionMeta
-} from '../pac/SolutionMeta';
-import { ConnectionReferenceService } from '../pac/ConnectionReferenceService';
-import { hashFolder } from '../pac/folderHash';
-import { assertSafeSolutionName, getSolutionsRoot } from '../pac/validation';
+} from '../platform/SolutionMeta';
+import { ConnectionReferenceService } from '../platform/ConnectionReferenceService';
+import { hashFolder } from '../platform/folderHash';
+import { assertSafeSolutionName, getSolutionsRoot } from '../platform/validation';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
 import { legacyStateKey, stateKey } from '../constants';
 
@@ -48,7 +47,6 @@ async function folderExists(p: string): Promise<boolean> {
 }
 
 export async function downloadSolution(
-    _pac: PacCli,
     solution: SolutionInfo,
     state?: vscode.Memento,
     auth?: AuthService,

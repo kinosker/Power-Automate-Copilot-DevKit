@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
+import { AuthService } from '../platform/AuthService';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
 import { FlowTreeProvider, FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { openFlowInPortal } from '../commands/openFlowInPortal';
 

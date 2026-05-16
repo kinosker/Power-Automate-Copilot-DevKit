@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 /**
  * Per-solution metadata written by the API-only download path.
  *
- * Replaces two roles previously played by `pac solution unpack` output:
+ * Replaces two roles previously played by legacy solution unpack output:
  *   * `Other/Solution.xml` — used as a "this folder is an unpacked solution"
  *     sentinel (the file's contents were never parsed by this extension).
  *   * `customizations.xml` — used by the linter to enumerate
@@ -59,7 +59,7 @@ export function connectionReferenceManifestPath(solutionFolder: string): string 
     return path.join(solutionMetaDir(solutionFolder), CONNECTION_REFERENCES_FILE);
 }
 
-/** Legacy `pac unpack` sentinel; still recognised so old checkouts keep working. */
+/** Legacy unpack sentinel; still recognised so old checkouts keep working. */
 export function legacySolutionSentinelPath(solutionFolder: string): string {
     return path.join(solutionFolder, 'Other', 'Solution.xml');
 }

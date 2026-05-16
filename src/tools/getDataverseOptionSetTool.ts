@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
 import {
     CompactOptionSet,
     DataverseMetadataClient
-} from '../pac/DataverseMetadataClient';
-import { DataverseMetadataCache } from '../pac/DataverseMetadataCache';
+} from '../platform/DataverseMetadataClient';
+import { DataverseMetadataCache } from '../platform/DataverseMetadataCache';
 
 interface GetDataverseOptionSetInput {
     /**

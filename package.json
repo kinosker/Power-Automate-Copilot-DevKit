@@ -20,7 +20,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In untrusted workspaces, workspace-scoped 'powerAutomateCopilotDevKit.pacPath' and 'powerAutomateCopilotDevKit.solutionsRoot' settings are ignored; user/global values are used instead."
+      "description": "In untrusted workspaces, workspace-scoped 'powerAutomateCopilotDevKit.solutionsRoot' is ignored; user/global values are used instead."
     }
   },
   "activationEvents": [],
@@ -335,7 +335,7 @@
       {
         "name": "powerautomatecopilotdevkit_linkConnectionToSolution",
         "displayName": "Link Connection Reference to Solution",
-        "modelDescription": "Attach an existing Dataverse connection reference (component type 10112) to a Power Platform solution via the AddSolutionComponent action so it is included in the next export. Use after the user has chosen a connection reference (e.g. from the listConnections tool) and wants to link it to the downloaded / pinned solution. The `connectionReferenceLogicalName` argument is REQUIRED and must be the logical name (not the display name) — exactly as returned by the listConnections tool. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. Examples: 'add this connection to my solution', 'link the SharePoint connection reference to the contoso_core solution', 'attach connection reference shared_office365_abc to the solution'. Idempotent: succeeds even if the reference is already a component of the solution. Do NOT use this tool to create a new connection or connection reference, to bind a connection reference to a different connection, or to upload / download flows.",
+        "modelDescription": "Attach an existing Dataverse connection reference to a Power Platform solution via the AddSolutionComponent action so it is included in the next export. Use after the user has chosen a connection reference (e.g. from the listConnections tool) and wants to link it to the downloaded / pinned solution. The `connectionReferenceLogicalName` argument is REQUIRED and must be the logical name (not the display name) — exactly as returned by the listConnections tool. The `solutionName` argument is OPTIONAL: omit it to use the solution pinned to this workspace. Examples: 'add this connection to my solution', 'link the SharePoint connection reference to the contoso_core solution', 'attach connection reference shared_office365_abc to the solution'. Idempotent: succeeds even if the reference is already a component of the solution. Do NOT use this tool to create a new connection or connection reference, to bind a connection reference to a different connection, or to upload / download flows.",
         "userDescription": "Add an existing connection reference to a Power Platform solution.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "linkConnectionToSolution",
@@ -479,11 +479,6 @@
     "configuration": {
       "title": "Power Automate Copilot DevKit",
       "properties": {
-        "powerAutomateCopilotDevKit.pacPath": {
-          "type": "string",
-          "default": "pac",
-          "description": "Path to the Microsoft Power Platform CLI executable."
-        },
         "powerAutomateCopilotDevKit.solutionsRoot": {
           "type": "string",
           "default": "solutions",
@@ -508,7 +503,7 @@
             "Both"
           ],
           "default": "Unmanaged",
-          "description": "Package type used by pac solution export/pack."
+          "description": "Legacy compatibility setting for solution package workflows; not used by the standard Dataverse-based flow download/upload path."
         },
         "powerAutomateCopilotDevKit.lint.blockOnWarnings": {
           "type": "boolean",

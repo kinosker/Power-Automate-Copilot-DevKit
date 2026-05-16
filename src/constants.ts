@@ -15,8 +15,6 @@ export const SKILL_VERSION_RELATIVE_PATH = '.github/.power-automate-copilot-devk
 export const WORKSPACE_DATA_DIR = '.power-automate-copilot-devkit';
 export const LEGACY_WORKSPACE_DATA_DIR = '.flowplugin';
 
-export const PAC_AUTH_PROFILE_NAME = 'power-automate-copilot-devkit';
-
 export function commandId(name: string): string {
     return `${COMMAND_PREFIX}.${name}`;
 }

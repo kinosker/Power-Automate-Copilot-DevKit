@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { lintFlow, LintFinding, findingsToDiagnostics } from './flowLinter';
-import { ConnectionReferenceService } from '../pac/ConnectionReferenceService';
+import { ConnectionReferenceService } from '../platform/ConnectionReferenceService';
 import { getDiagnosticCollection } from './diagnostics';
 import { EXTENSION_DISPLAY_NAME } from '../constants';
-import { isSolutionFolder } from '../pac/SolutionMeta';
+import { isSolutionFolder } from '../platform/SolutionMeta';
 
 export interface LintRunResult {
     findings: LintFinding[];
@@ -18,7 +18,7 @@ export interface LintRunResult {
 /**
  * Walk up from a flow file to find the solution root. Recognises both the
  * new `Others/solution.json` marker (API-only download) and the legacy
- * `Other/Solution.xml` (`pac unpack`) sentinel.
+ * `Other/Solution.xml` sentinel.
  */
 export async function findSolutionFolderForFlow(flowFile: string): Promise<string | undefined> {
     let dir = path.dirname(flowFile);

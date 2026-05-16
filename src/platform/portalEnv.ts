@@ -45,9 +45,8 @@ export function resolvePortalEnvironmentId(auth: AuthService): string {
     if (!env?.EnvironmentId) {
         throw new Error('Select a Power Platform environment first.');
     }
-    // pac (as of 1.x/2.x) doesn't expose an `IsDefault` flag in `pac org list`.
-    // It only signals the tenant's default environment by appending "(default)"
-    // to the display name. Detect that suffix as the source of truth.
+    // Some environment sources do not expose an explicit `IsDefault` flag.
+    // Treat a "(default)" display-name suffix as a fallback signal.
     const rec = env as Record<string, unknown>;
     const explicitFlag = rec.IsDefault ?? rec.isDefault;
     const flagDefault =
@@ -64,7 +63,7 @@ export function resolvePortalEnvironmentId(auth: AuthService): string {
     if (!portalEnvId) {
         throw new Error(
             `Cannot determine a portal-compatible id for environment '${env.EnvironmentId}'. ` +
-            `Re-select the environment so 'pac org list' can return a canonical GUID.`
+            `Re-select the environment so a canonical GUID can be resolved.`
         );
     }
     return portalEnvId;

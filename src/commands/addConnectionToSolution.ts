@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
-import { refreshConnectionReferenceManifest } from '../pac/refreshConnectionReferences';
-import { assertSafeSolutionName } from '../pac/validation';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient } from '../platform/DataverseClient';
+import { refreshConnectionReferenceManifest } from '../platform/refreshConnectionReferences';
+import { assertSafeSolutionName } from '../platform/validation';
 
 export interface AddConnectionToSolutionResult {
     /** Logical name of the connection reference that was attached. */

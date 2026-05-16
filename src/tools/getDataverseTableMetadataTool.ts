@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
 import {
     DataverseMetadataClient,
     TableMetadataPayload
-} from '../pac/DataverseMetadataClient';
-import { DataverseMetadataCache } from '../pac/DataverseMetadataCache';
+} from '../platform/DataverseMetadataClient';
+import { DataverseMetadataCache } from '../platform/DataverseMetadataCache';
 
 interface GetDataverseTableMetadataInput {
     /** REQUIRED. Singular table logical name, e.g. `account`, `contact`, `cr1a3_order`. */

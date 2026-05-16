@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
-import { PacCli } from '../pac/PacCli';
-import { AuthService } from '../pac/AuthService';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
+import { AuthService } from '../platform/AuthService';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
 import { FlowTreeProvider, SolutionInfo } from '../tree/FlowTreeProvider';
 import { downloadSolution } from '../commands/download';
 
@@ -20,7 +19,6 @@ interface DownloadSolutionInput {
  */
 export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSolutionInput> {
     constructor(
-        private readonly pac: PacCli,
         private readonly tree: FlowTreeProvider,
         private readonly state: vscode.Memento,
         private readonly auth: AuthService,
@@ -55,7 +53,7 @@ export class DownloadSolutionTool implements vscode.LanguageModelTool<DownloadSo
             if ('error' in target) {
                 return text(target.error);
             }
-            await downloadSolution(this.pac, target.solution, this.state, this.auth, this.output);
+            await downloadSolution(target.solution, this.state, this.auth, this.output);
             this.tree.refresh();
             return text(
                 `Downloaded '${target.solution.SolutionUniqueName}' (flows pulled via the Dataverse API).`

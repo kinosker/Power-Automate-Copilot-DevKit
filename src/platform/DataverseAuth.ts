@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
  * URL via VS Code's built-in `microsoft` authentication provider.
  *
  * The token is scoped to `<orgUrl>/.default`, which yields an audience the
- * Dataverse Web API will accept (the same audience pac uses internally).
+ * Dataverse Web API will accept.
  */
 export class DataverseAuth {
     constructor() {}
@@ -42,7 +42,7 @@ export function normalizeOrgUrl(orgUrl: string): string {
     if (u.protocol !== 'https:') {
         throw new Error(`Refusing non-HTTPS environment URL: '${orgUrl}'`);
     }
-    // Defense-in-depth: only accept Dataverse host suffixes pac itself targets.
+    // Defense-in-depth: only accept known Dataverse host suffixes.
     const host = u.hostname.toLowerCase();
     const allowed = [
         '.dynamics.com',

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
+import { AuthService } from '../platform/AuthService';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
 import { openCreateConnections } from '../commands/createConnections';
 
 interface CreateConnectionsInput {

@@ -65,7 +65,7 @@ Key impact points:
 
 - VS Code 1.90.0 or newer.
 - GitHub Copilot enabled in VS Code for the full AI-assisted editing experience.
-- Microsoft Power Platform CLI (`pac`) installed and available on `PATH`.
+- A Microsoft account that can access your target Power Platform environment.
 - Access to a Power Platform environment.
 - An unmanaged Power Platform solution that contains the cloud flow to edit.
    - For a new flow, create a skeletal flow with at least a trigger action step in the solution before using this extension.

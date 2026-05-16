@@ -26,12 +26,10 @@ Power Automate Copilot DevKit brings Power Automate cloud flow editing into VS C
 Before installing the extension, make sure you have:
 
 - VS Code 1.90.0 or newer.
-- Microsoft Power Platform CLI (`pac`) installed and available on `PATH`.
+- A Microsoft account that can access your target Power Platform environment.
 - Access to a Power Platform environment.
 - An unmanaged Power Platform solution that contains the cloud flow you want to edit.
 - **Optional**: GitHub Copilot recommended for natural-language flow editing and the bundled GHCP skill guidance.
-
-Install `pac` from the Microsoft documentation: https://learn.microsoft.com/power-platform/developer/cli/introduction
 
 ### Installation from VS Code Extension
 
@@ -109,11 +107,11 @@ Help me make this flow use safer retry and runAfter patterns.
 
 | Command | Use it for |
 |---|---|
-| `Power Automate: Sign In` | Sign in with the Power Platform CLI. |
+| `Power Automate: Sign In` | Sign in with your Microsoft account in VS Code. |
 | `Power Automate: Select Environment` | Choose the target Power Platform environment. |
 | `Power Automate: Select Solution` | Pin the solution that contains your flows. |
 | `Power Automate: Unpin Solution` | Remove the pinned solution from this workspace. |
-| `Download Solution (Export + Unpack)` | Download the pinned solution and unpack flows as JSON. |
+| `Download Solution (Export + Unpack)` | Download the pinned solution and write its flows as local JSON via the Dataverse API. |
 | `Open Flow Definition` | Open the local JSON file for a flow. |
 | `Power Automate: Validate Flow Definition` | Run static analysis on a flow JSON file. |
 | `Power Automate: Compare Flow with Server` | Compare local or baseline content with the live server flow. |
@@ -155,7 +153,6 @@ Most users can keep the defaults.
 
 | Setting | Default | Use it when |
 |---|---:|---|
-| `powerAutomateCopilotDevKit.pacPath` | `pac` | `pac` is not on `PATH`. |
 | `powerAutomateCopilotDevKit.solutionsRoot` | `solutions` | You want downloaded solutions in a different workspace-relative folder. |
 | `powerAutomateCopilotDevKit.autoPublishOnUpload` | `true` | You want to control whether uploads publish automatically. |
 | `powerAutomateCopilotDevKit.lint.blockOnWarnings` | `false` | You want warnings to block uploads. |
@@ -165,15 +162,14 @@ Most users can keep the defaults.
 | `powerAutomateCopilotDevKit.backupRetention` | `10` | You want to keep more or fewer remote backups per flow. |
 | `powerAutomateCopilotDevKit.dryRunUpload` | `false` | You want to test the upload pipeline without sending changes. |
 
-In untrusted workspaces, workspace-scoped `pacPath` and `solutionsRoot` values are ignored. Use user or global settings, or trust the workspace.
+In untrusted workspaces, workspace-scoped `solutionsRoot` values are ignored. Use user or global settings, or trust the workspace.
 
 ### Troubleshooting
 
 | Problem | What to check |
 |---|---|
 | The lightning icon does not appear | Confirm the VSIX installed successfully and reload VS Code. |
-| `pac` is not found | Install Microsoft Power Platform CLI or set `powerAutomateCopilotDevKit.pacPath`. |
-| No environment appears | Run `Power Automate: Sign In`, then `Power Automate: Select Environment`. |
+| No environment appears | Run `Power Automate: Sign In`, then `Power Automate: Select Environment`. Confirm your account has permission and consent to query environments. |
 | No solution appears | Confirm the environment contains an unmanaged solution you can access. |
 | The solution is pinned but not downloaded | Run `Download Solution (Export + Unpack)`. |
 | Upload warns about server drift | Review the diff, upload your local version, pull the server version, or cancel. |
@@ -190,7 +186,7 @@ Use this section when you want to build, debug, package, or extend the extension
 | `src/extension.ts` | Extension activation, command registration, tree setup, file watchers, diagnostics, and GHCP tool registration. |
 | `src/commands/` | VS Code command implementations such as download, upload, diff, refresh, validate, and portal actions. |
 | `src/tools/` | GitHub Copilot language model tool wrappers. These call the same guarded paths as user commands. |
-| `src/pac/` | Power Platform CLI wrapper, Dataverse client/auth, manifests, backups, folder hashing, and validation helpers. |
+| `src/platform/` | Dataverse auth/client services, manifests, backups, folder hashing, and validation helpers. |
 | `src/tree/` | Power Automate tree view provider and tree item behavior. |
 | `src/validation/` | Flow linter, diagnostics integration, and lint runner. |
 | `schemas/` | JSON schema used for `Workflows/*.json` validation. |
@@ -205,7 +201,7 @@ Use this section when you want to build, debug, package, or extend the extension
 2. Add menu placement in `package.json` if the command should appear in the tree, editor, Explorer, or command palette.
 3. Implement the command under `src/commands/`.
 4. Register the command in `src/extension.ts` with the existing `register(...)` helper.
-5. Reuse existing services such as `AuthService`, `PacCli`, `DataverseClient`, and `FlowTreeProvider` instead of creating parallel access paths.
+5. Reuse existing services such as `AuthService`, `DataverseClient`, and `FlowTreeProvider` instead of creating parallel access paths.
 
 ### Add A GHCP Tool
 
@@ -243,10 +239,9 @@ Use this section when you want to build, debug, package, or extend the extension
 
 ## Safety And Design Notes
 
-- Keep `pac` calls inside `PacCli`; it uses process spawning without a shell.
 - Validate solution names, workflow IDs, and environment IDs before using them in CLI or Dataverse operations.
 - Preserve upload safeguards: linting, connection checks, drift detection, remote backup, ETag conditional PATCH, and state restore behavior.
 - Keep upload scoped to one flow unless the product intentionally changes.
-- Respect untrusted workspace behavior for `pacPath` and `solutionsRoot`.
+- Respect untrusted workspace behavior for `solutionsRoot`.
 - Prefer existing command and service paths for GHCP tools so agent-mode behavior matches the UI.
 - Do not bypass `FlowManifest` when changing download, upload, drift, backup, or baseline behavior.

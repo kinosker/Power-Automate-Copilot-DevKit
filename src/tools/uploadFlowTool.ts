@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
+import { AuthService } from '../platform/AuthService';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
 import { FlowTreeProvider, FlowInfo, SolutionInfo } from '../tree/FlowTreeProvider';
 import { uploadFlow } from '../commands/uploadFlow';
 
@@ -90,7 +90,7 @@ export class UploadFlowTool implements vscode.LanguageModelTool<UploadFlowInput>
             return { error: 'No solution name provided and no solution is pinned for this workspace. Pass `solutionName`.' };
         }
 
-        // Skip the `pac solution list --json` round-trip: downstream upload
+        // Skip a solution-list round-trip: downstream upload
         // logic only consumes `SolutionUniqueName`, and the on-disk
         // `Workflows/` folder is the source of truth for flows. We assume
         // `solName` is already the unique name (the common case from the

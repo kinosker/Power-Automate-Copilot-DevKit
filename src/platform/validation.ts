@@ -6,7 +6,7 @@ const SOLUTION_NAME_RE = /^[A-Za-z0-9_]{1,128}$/;
 /** GUID with optional braces. */
 const GUID_RE = /^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/;
 /**
- * pac surfaces environments by either GUID or by the legacy unique-name token
+ * Environment discovery may surface ids by GUID or by legacy unique-name token
  * (e.g. "unqa7db3aa85f2ef111a7e56045bd0a1"). Both are alphanumeric/underscore
  * only — safe to pass through spawn() with shell:false.
  */

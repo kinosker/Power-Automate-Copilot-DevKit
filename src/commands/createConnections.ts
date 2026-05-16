@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
-import { DataverseAuth } from '../pac/DataverseAuth';
-import { DataverseClient } from '../pac/DataverseClient';
-import { PinnedSolutionService } from '../pac/PinnedSolutionService';
-import { resolvePortalEnvironmentId } from '../pac/portalEnv';
+import { AuthService } from '../platform/AuthService';
+import { DataverseAuth } from '../platform/DataverseAuth';
+import { DataverseClient } from '../platform/DataverseClient';
+import { PinnedSolutionService } from '../platform/PinnedSolutionService';
+import { resolvePortalEnvironmentId } from '../platform/portalEnv';
 import { SolutionInfo } from '../tree/FlowTreeProvider';
 
 /**

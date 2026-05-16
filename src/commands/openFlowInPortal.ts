@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { AuthService } from '../pac/AuthService';
+import { AuthService } from '../platform/AuthService';
 import { FlowInfo } from '../tree/FlowTreeProvider';
-import { assertGuid } from '../pac/validation';
-import { resolvePortalEnvironmentId } from '../pac/portalEnv';
+import { assertGuid } from '../platform/validation';
+import { resolvePortalEnvironmentId } from '../platform/portalEnv';
 
 /**
  * Open the given flow in the Power Automate maker portal in the user's

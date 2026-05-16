@@ -21,7 +21,7 @@ const serviceCache = new Map<string, CachedConnectionReferences>();
  * Two source modes, in priority order:
  *   1. New API-only download path: `<solution>/Others/connection-references.json`
  *      (a JSON manifest written at download time). Authoritative when present.
- *   2. Legacy `pac unpack` output: regex-scan `<solution>/customizations.xml`
+ *   2. Legacy unpacked solution output: regex-scan `<solution>/customizations.xml`
  *      and `<solution>/connectionreferences/*.xml` for
  *      `connectionreferencelogicalname` values.
  */
