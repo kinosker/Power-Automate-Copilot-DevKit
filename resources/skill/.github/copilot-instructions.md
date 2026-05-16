@@ -130,4 +130,9 @@ referencing them explicitly.
   concurrency, environment variables, solution hygiene.
 - `docs/flow-skill/04-expressions-cookbook.md` — paste-ready WDL
   recipes for Choice / Lookup columns, date math, `result()`
-  inspection, idempotency keys, dynamic JSON via `createObject`.
+  inspection, idempotency keys, dynamic JSON via `createObject`,
+  extended date/time, JSON object manipulation.
+- `docs/flow-skill/05-expression-functions-reference.md` — quick-reference
+  for all WDL function categories (string, collection, logical, math,
+  date/time, conversion, JSON manipulation, URI parsing). Load when
+  writing non-trivial expressions or when a function's behaviour is unclear.

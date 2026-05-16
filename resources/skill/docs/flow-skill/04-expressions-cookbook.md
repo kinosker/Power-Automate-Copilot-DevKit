@@ -147,6 +147,34 @@ All timestamps are ISO-8601 UTC strings.
 `ticks` returns 100-nanosecond units; divide by 10,000,000 for
 seconds, 600,000,000 for minutes.
 
+## Extended date and time
+
+All timestamps are ISO-8601 UTC strings unless a `format` argument is provided.
+
+```text
+@addHours(utcNow(), 8)                                          // 8 hours ahead
+@addMinutes(triggerBody()?['MeetingStart'], 30)                 // extend 30 min
+@getFutureTime(7, 'Day')                                        // +7 days, no base needed
+@getPastTime(30, 'Day')                                         // 30 days ago
+@subtractFromTime(utcNow(), 1, 'Month')                         // same day last month
+@addToTime(utcNow(), 2, 'Week')                                 // +2 weeks
+@startOfDay(utcNow())                                           // midnight today UTC
+@startOfMonth(utcNow())                                         // 1st of this month, midnight
+@dayOfWeek(utcNow())                                            // 0=Sun 1=Mon … 6=Sat
+@convertTimeZone(utcNow(), 'UTC', 'Singapore Standard Time', 'yyyy-MM-dd HH:mm')
+@parseDateTime(triggerBody()?['DateString'], 'en-US')           // string → timestamp
+```
+
+`dateDifference(start, end)` returns an ISO-8601 duration string (e.g.
+`P1DT2H30M`) — not a number. For a numeric day count, use `ticks`:
+
+```text
+@div(
+  sub(ticks(triggerBody()?['DueDate']), ticks(utcNow())),
+  864000000000
+)   // days remaining (864,000,000,000 ticks = 1 day)
+```
+
 ## Inspecting failures inside a catch
 
 ```text
@@ -185,6 +213,32 @@ becomes unreadable fast.
 `replace`-based escaping is brittle — values with quotes or backslashes
 will break it.
 
+## JSON object manipulation
+
+Use these to add, update, or remove properties without rebuilding the
+whole object from scratch:
+
+```text
+// Add a correlation id before forwarding
+@addProperty(triggerBody(), 'correlationId', guid())
+
+// Overwrite a property (returns new object — does not mutate in place)
+@setProperty(variables('record'), 'ProcessedAt', utcNow())
+
+// Strip an internal field before calling a downstream API
+@removeProperty(triggerBody(), 'internalRef')
+
+// Chain: update status and strip a field in one expression
+@removeProperty(
+  setProperty(triggerBody(), 'status', 'Processed'),
+  'rawPayload'
+)
+```
+
+Each function returns a **new** object. Chain them for multiple changes.
+Prefer `createObject` when building from scratch — mutation-chain verbosity
+adds up fast.
+
 ## Idempotency keys
 
 ```text
@@ -221,11 +275,15 @@ that wraps an Azure Function or Dataverse plugin.
 | Numeric comparison always false | One side is a string | Wrap with `int()` / `float()` |
 | `union` output missing newer values | Argument order swapped | `union(new, old)`, not `union(old, new)` |
 | `split` throws on null | Source field is null | `split(coalesce(field, ''), ',')` |
+| `equals(field, null)` matches empty string too | null → '' conversion | Use `empty(coalesce(field, ''))` instead |
+| Wrong value inside Foreach body | Used `item()` instead of `items()` | Use `items('Foreach_Name')?['Field']` |
 
 ## Cross-references
 
 - Hard rules and linter coverage —
   `.github/instructions/expressions.instructions.md`
+- All function signatures and categories —
+  `docs/flow-skill/05-expression-functions-reference.md`
 - Reading `result()` inside a catch — `01-error-handling.md` →
   *Distinguishing transient vs terminal failures*
 - Hoisting expressions into a `Compose` for caching —
