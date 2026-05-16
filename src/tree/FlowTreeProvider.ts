@@ -10,7 +10,7 @@ import { clientDataEquals, readBaseline, readFlowManifest } from '../pac/FlowMan
 import { getSolutionsRoot } from '../pac/validation';
 import { isSolutionFolder } from '../pac/SolutionMeta';
 import { getConfigValue } from '../config';
-import { commandId, SKILL_SLUG } from '../constants';
+import { commandId, SKILL_BUNDLE_VERSION, SKILL_SLUG, SKILL_VERSION_RELATIVE_PATH } from '../constants';
 
 export interface SolutionInfo {
     SolutionUniqueName: string;
@@ -208,16 +208,16 @@ class MessageNode extends vscode.TreeItem {
 class SkillInstallNode extends vscode.TreeItem {
     readonly kind = 'skillInstall' as const;
     constructor() {
-        super('Install Copilot Skills for Power Automate', vscode.TreeItemCollapsibleState.None);
+        super('Install or Update Copilot Skills for Power Automate', vscode.TreeItemCollapsibleState.None);
         this.contextValue = 'skillInstall';
         this.iconPath = new vscode.ThemeIcon(
             'warning',
             new vscode.ThemeColor('list.warningForeground')
         );
-        this.tooltip = 'Installs guidance files under .github/ that GitHub Copilot uses when editing flow definitions in this workspace.';
+        this.tooltip = 'Installs or updates guidance files under .github/ that GitHub Copilot uses when editing flow definitions in this workspace.';
         this.command = {
             command: commandId('installSkill'),
-            title: 'Install Copilot Skills for Power Automate'
+            title: 'Install or Update Copilot Skills for Power Automate'
         };
     }
 }
@@ -476,9 +476,9 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     }
 
     /**
-     * True when a workspace is open and the bundled Copilot skill folder
-        * (`.github/skills/power-automate-copilot-devkit`) is not present. Used to surface a
-     * one-click install affordance at the top of the tree.
+     * True when a workspace is open and the bundled Copilot skill is either
+     * missing or outdated. Used to surface a one-click install/update
+     * affordance at the top of the tree.
      */
     private async shouldOfferSkillInstall(): Promise<boolean> {
         const ws = vscode.workspace.workspaceFolders?.[0];
@@ -486,7 +486,14 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
         const sentinel = path.join(ws.uri.fsPath, '.github', 'skills', SKILL_SLUG);
         try {
             await fs.access(sentinel);
-            return false;
+        } catch {
+            return true;
+        }
+
+        const marker = path.join(ws.uri.fsPath, ...SKILL_VERSION_RELATIVE_PATH.split('/'));
+        try {
+            const installedVersion = (await fs.readFile(marker, 'utf8')).trim();
+            return installedVersion !== SKILL_BUNDLE_VERSION;
         } catch {
             return true;
         }

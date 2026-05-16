@@ -21,8 +21,20 @@ import { ViewFlowTool } from './tools/viewFlowTool';
 import { ListConnectionsTool } from './tools/listConnectionsTool';
 import { CreateConnectionsTool } from './tools/createConnectionsTool';
 import { LinkConnectionToSolutionTool } from './tools/linkConnectionToSolutionTool';
+import { ListDataverseTablesTool } from './tools/listDataverseTablesTool';
+import { GetDataverseTableMetadataTool } from './tools/getDataverseTableMetadataTool';
+import { GetDataverseOptionSetTool } from './tools/getDataverseOptionSetTool';
+import { DataverseMetadataCache } from './pac/DataverseMetadataCache';
 import { openCreateConnections } from './commands/createConnections';
-import { commandId, lmToolName, OUTPUT_CHANNEL_NAME, SKILL_SLUG, TREE_VIEW_ID } from './constants';
+import {
+    commandId,
+    lmToolName,
+    OUTPUT_CHANNEL_NAME,
+    SKILL_BUNDLE_VERSION,
+    SKILL_SLUG,
+    SKILL_VERSION_RELATIVE_PATH,
+    TREE_VIEW_ID
+} from './constants';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
@@ -192,6 +204,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 new LinkConnectionToSolutionTool(auth, tree, pins, output)
             )
         );
+
+        // Dataverse metadata tools — read-only schema lookups so Copilot can
+        // resolve table / attribute / option-set names instead of guessing.
+        // Skipped when no workspace is open: the cache writes under the
+        // workspace's `.power-automate-copilot-devkit/` folder.
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (wsRoot) {
+            const metadataCache = new DataverseMetadataCache(wsRoot, output);
+            context.subscriptions.push(
+                vscode.lm.registerTool(
+                    lmToolName('listDataverseTables'),
+                    new ListDataverseTablesTool(auth, metadataCache, output)
+                )
+            );
+            context.subscriptions.push(
+                vscode.lm.registerTool(
+                    lmToolName('dataverseTableMetadata'),
+                    new GetDataverseTableMetadataTool(auth, metadataCache, output)
+                )
+            );
+            context.subscriptions.push(
+                vscode.lm.registerTool(
+                    lmToolName('dataverseOptionSet'),
+                    new GetDataverseOptionSetTool(auth, metadataCache, output)
+                )
+            );
+            register(commandId('clearDataverseMetadataCache'), async () => {
+                try {
+                    const env = auth.getSelectedEnvironment();
+                    const removed = await metadataCache.clear(env?.EnvironmentId);
+                    const scope = env?.EnvironmentId
+                        ? `environment '${env.DisplayName ?? env.EnvironmentId}'`
+                        : 'all environments';
+                    vscode.window.showInformationMessage(
+                        `Cleared Dataverse metadata cache for ${scope} (${removed} file${removed === 1 ? '' : 's'}).`
+                    );
+                } catch (e: any) {
+                    vscode.window.showErrorMessage(`Clear Dataverse metadata cache failed: ${e?.message ?? e}`);
+                }
+            });
+        }
     }
 
     register(commandId('refresh'), () => tree.refresh());
@@ -533,8 +586,8 @@ export function deactivate(): void {
 }
 
 /**
- * If the bundled Copilot skill is missing from the workspace, show a modal
- * dialog offering to install it. Used at the moment the user clicks
+ * If the bundled Copilot skill is missing or outdated in the workspace, show
+ * a modal dialog offering to install/update it. Used at the moment the user clicks
  * "Download solution" so the prompt is contextual rather than nagging on
  * every activation.
  */
@@ -546,23 +599,23 @@ async function promptInstallSkillIfMissing(
     const ws = vscode.workspace.workspaceFolders?.[0];
     if (!ws) { return; }
 
-    const sentinel = vscode.Uri.joinPath(ws.uri, '.github', 'skills', SKILL_SLUG);
-    try {
-        await vscode.workspace.fs.stat(sentinel);
-        return; // already installed
-    } catch {
-        /* missing — fall through to prompt */
+    const status = await getSkillInstallStatus(ws.uri);
+    if (status === 'current') {
+        return;
     }
 
+    const isUpdate = status === 'outdated';
     const pick = await vscode.window.showInformationMessage(
-        'Install Copilot Skills for Power Automate?',
+        `${isUpdate ? 'Update' : 'Install'} Copilot Skills for Power Automate?`,
         {
             modal: true,
-            detail: 'Copilot Skills provides guidance for GHCP on how to edit flows in a structured manner.'
+            detail: isUpdate
+                ? 'This workspace has an older skill version. Updating keeps Copilot aligned with the latest guidance.'
+                : 'Copilot Skills provides guidance for GHCP on how to edit flows in a structured manner.'
         },
-        'Install'
+        isUpdate ? 'Update' : 'Install'
     );
-    if (pick === 'Install') {
+    if (pick === (isUpdate ? 'Update' : 'Install')) {
         try {
             await installFlowSkill(context, output);
         } catch (e: any) {
@@ -657,9 +710,40 @@ async function installFlowSkill(
         output.appendLine(`[install-skill] wrote ${rel.join('/')}`);
     }
 
+    // Only stamp the new version when no bundled files were skipped.
+    // If the user chose "Skip existing", stale files may remain.
+    if (skipped === 0) {
+        const skillVersionMarker = vscode.Uri.joinPath(targetRoot, ...SKILL_VERSION_RELATIVE_PATH.split('/'));
+        await vscode.workspace.fs.writeFile(skillVersionMarker, new TextEncoder().encode(`${SKILL_BUNDLE_VERSION}\n`));
+        written++;
+        output.appendLine(`[install-skill] wrote ${SKILL_VERSION_RELATIVE_PATH}`);
+    }
+
     vscode.window.showInformationMessage(
         `Flow Skill installed: ${written} file(s) written${skipped ? `, ${skipped} skipped` : ''}.`
     );
+}
+
+type SkillInstallStatus = 'missing' | 'outdated' | 'current';
+
+async function getSkillInstallStatus(workspaceRoot: vscode.Uri): Promise<SkillInstallStatus> {
+    const sentinel = vscode.Uri.joinPath(workspaceRoot, '.github', 'skills', SKILL_SLUG);
+    try {
+        await vscode.workspace.fs.stat(sentinel);
+    } catch {
+        return 'missing';
+    }
+
+    const marker = vscode.Uri.joinPath(workspaceRoot, ...SKILL_VERSION_RELATIVE_PATH.split('/'));
+    let installedVersion = '';
+    try {
+        const bytes = await vscode.workspace.fs.readFile(marker);
+        installedVersion = new TextDecoder().decode(bytes).trim();
+    } catch {
+        return 'outdated';
+    }
+
+    return installedVersion === SKILL_BUNDLE_VERSION ? 'current' : 'outdated';
 }
 
 /** Recursively enumerate files under `root`, returned as path segments relative to `root`. */

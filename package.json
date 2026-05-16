@@ -115,6 +115,11 @@
         "command": "powerAutomateCopilotDevKit.createConnections",
         "title": "Power Automate: Create a Connection",
         "icon": "$(plug)"
+      },
+      {
+        "command": "powerAutomateCopilotDevKit.clearDataverseMetadataCache",
+        "title": "Power Automate: Clear Dataverse Metadata Cache",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
@@ -355,6 +360,119 @@
           "required": [
             "connectionReferenceLogicalName"
           ]
+        }
+      },
+      {
+        "name": "powerautomatecopilotdevkit_listDataverseTables",
+        "displayName": "List Dataverse Tables",
+        "modelDescription": "List Dataverse (Dynamics 365 / D365 CE / D365 CRM / CDS) tables in the currently selected Power Platform environment, projected to a compact JSON shape (logicalName, displayName, entitySet, custom, primaryId, primaryName, ownership). Use to resolve a user phrase like 'contact', 'orders', or a custom-prefixed display name to the correct table LogicalName before authoring a Dataverse action. Optional `query` is a case-insensitive substring filter against logicalName, displayName, and entitySet. Optional `customOnly` restricts to `IsCustomEntity` tables. `limit` defaults to 50 (max 200). `forceRefresh` skips the workspace cache. The first call in a workspace populates an on-disk cache; subsequent calls will ask the user whether to refresh, defaulting to cached. Examples: 'list dataverse tables', 'find a table for orders', 'show me custom tables'. Read-only. Do NOT use this tool to create, update, or delete table rows — that is the Dataverse connector action inside a flow.",
+        "userDescription": "List Dataverse tables in the selected environment.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "listDataverseTables",
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "OPTIONAL. Case-insensitive substring matched against each table's logicalName, displayName, and entitySet (e.g. 'order', 'contact', 'cr1a3_')."
+            },
+            "customOnly": {
+              "type": "boolean",
+              "description": "OPTIONAL. When true, return only `IsCustomEntity = true` tables."
+            },
+            "limit": {
+              "type": "number",
+              "description": "OPTIONAL. Hard cap on results returned. Default 50, max 200."
+            },
+            "forceRefresh": {
+              "type": "boolean",
+              "description": "OPTIONAL. When true, bypass the workspace cache and refetch the table list from Dataverse."
+            }
+          }
+        }
+      },
+      {
+        "name": "powerautomatecopilotdevkit_dataverseTableMetadata",
+        "displayName": "Get Dataverse Table Metadata",
+        "modelDescription": "Return the compact schema of a single Dataverse (Dynamics 365 / D365 CE / D365 CRM / CDS) table: every attribute with its logical name, type, required level, read-only flags, primary-id / primary-name flags, AND for every Lookup / Customer / Owner attribute the `bindings` array with `target`, `navProperty`, and `entitySet` (the values needed to compose `\"<navProperty>@odata.bind\": \"/<entitySet>(<guid>)\"` on Create/Update). Picklist / State / Status / MultiSelectPicklist / Boolean attributes embed their option-set inline when small (≤ 25 options) and a `{ count, truncated: true }` summary otherwise — drill into truncated ones with the dataverseOptionSet tool. ALWAYS call this tool before authoring a Dataverse `OpenApiConnection` action whose `apiId` ends in `shared_commondataserviceforapps` (CreateRecord, UpdateRecord, DeleteRecord, GetItem, ListRecords) so you use real attribute logical names instead of guessing. `logicalName` is REQUIRED — singular table LogicalName (e.g. 'account', 'contact', 'cr1a3_order'), NOT the entity-set name. `includeOptionSets` defaults to 'small'. `includeReadOnly` defaults to false (hides system fields like `createdon`, `_owninguser_value`); set true for Read flows that need formatted-value columns. `forceRefresh` skips the workspace cache. Read-only. Do NOT use this tool to modify rows — that is the Dataverse connector inside a flow.",
+        "userDescription": "Fetch the schema (attributes, lookup bindings, option sets) for a Dataverse table.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dataverseTableMetadata",
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "logicalName": {
+              "type": "string",
+              "description": "REQUIRED. Singular table LogicalName (e.g. 'account', 'contact', 'cr1a3_order'). NOT the entity-set / plural collection name."
+            },
+            "includeOptionSets": {
+              "type": "string",
+              "enum": [
+                "none",
+                "small",
+                "all"
+              ],
+              "description": "OPTIONAL. 'none' = never inline option values; 'small' (default) = inline only when ≤ 25 options; 'all' = always inline."
+            },
+            "includeReadOnly": {
+              "type": "boolean",
+              "description": "OPTIONAL. When false (default), drops attributes that are read-only on BOTH Create and Update (system fields). Set true for Read flows."
+            },
+            "forceRefresh": {
+              "type": "boolean",
+              "description": "OPTIONAL. When true, bypass the workspace cache and refetch from Dataverse."
+            }
+          },
+          "required": [
+            "logicalName"
+          ]
+        }
+      },
+      {
+        "name": "powerautomatecopilotdevkit_dataverseOptionSet",
+        "displayName": "Get Dataverse Option-Set Values",
+        "modelDescription": "Return the integer-value / label pairs of a Dataverse (Dynamics 365 / D365 CE / D365 CRM / CDS) option-set so you never invent picklist / choice / status / state values. Pass EITHER `globalOptionSetName` for a globally-scoped option-set, OR both `entityLogicalName` + `attributeLogicalName` for a table-scoped (local) option-set — not both. Handles Picklist, State, Status, MultiSelectPicklist, and Boolean attribute types (Boolean returns `trueLabel` / `falseLabel` instead of an options array). Use whenever the user mentions a picklist value by its LABEL (e.g. 'set status to Active', 'industry = Accounting', 'priority Low') — call this tool to get the integer `value` to write into `inputs.parameters.item`. Optional `forceRefresh` skips the workspace cache. Read-only. Do NOT use this tool when the user already gave the numeric value, when the attribute is not a picklist/choice column, or when authoring non-Dataverse connectors.",
+        "userDescription": "Fetch the option-set values for a Dataverse picklist / choice / status attribute.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dataverseOptionSet",
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "entityLogicalName": {
+              "type": "string",
+              "description": "OPTIONAL when `globalOptionSetName` is set, REQUIRED otherwise. Singular table LogicalName (e.g. 'account')."
+            },
+            "attributeLogicalName": {
+              "type": "string",
+              "description": "OPTIONAL when `globalOptionSetName` is set, REQUIRED otherwise. Attribute LogicalName on the table (e.g. 'statecode', 'industrycode')."
+            },
+            "globalOptionSetName": {
+              "type": "string",
+              "description": "OPTIONAL. Name of a global option-set (e.g. 'prioritycode'). Mutually exclusive with `entityLogicalName` / `attributeLogicalName`."
+            },
+            "forceRefresh": {
+              "type": "boolean",
+              "description": "OPTIONAL. When true, bypass the workspace cache and refetch from Dataverse."
+            }
+          }
         }
       }
     ],

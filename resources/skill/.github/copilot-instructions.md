@@ -92,6 +92,37 @@ the checks in `src/validation/flowLinter.ts`.
   that as authoritative and don't retry without a fresh user
   instruction.
 
+## Dataverse authoring
+
+- The Dataverse / Dynamics 365 / D365 CE / D365 CRM / CDS connector
+  is one and the same — `shared_commondataserviceforapps`. Whatever
+  the user calls it, the protocol below applies.
+- Before adding an `OpenApiConnection` action targeting that
+  connector (or any chat intent about creating / updating / reading a
+  record in those platforms), ALWAYS ask the user first, in plain
+  language. Template: *“You're adding a Dataverse action on `<table>`. I
+  can pull a bit of context from that table in your environment — it
+  makes me much more accurate (right field names, required fields,
+  lookups, choice values). Want me to grab it?  **Yes** / **Use
+  cached** / **Skip**.”* Show **Use cached** only when a cache entry
+  already exists. NEVER mention `EntityDefinitions`, `RequiredLevel`,
+  `@odata.bind`, or “logical name” in the ask.
+- `inputs.parameters.entityName` is the **EntitySetName** (the plural
+  collection name from `table.entitySet`), not the LogicalName.
+  `accounts`, not `account`. This is the single most common cause of
+  Create-record runtime failures.
+- Inside `inputs.parameters.item`, attribute keys are LogicalNames
+  (lowercase). Lookup writes use `"<navProperty>@odata.bind":
+  "/<entitySet>(<guid>)"` with values from the metadata tool's
+  `bindings` array — NOT the `_value` postfix (that is read-only).
+  Picklist / Choice / Status writes use the integer `value` from the
+  option-set, never the label. Boolean writes use `true` / `false`.
+- The full stage-by-stage protocol — including the resolve-the-table,
+  schema-fetch, option-set-fetch, stop-conditions, and wrong/right
+  examples — lives in
+  `.github/instructions/dataverse-actions.instructions.md`. Run it
+  every time before authoring a Dataverse action.
+
 ## Idempotency
 
 - Write actions can run more than once because the runtime retries on
@@ -111,6 +142,11 @@ More granular rules live next to this file:
   resolution protocol for adding a connector action whose connection
   reference is not already declared (uses `#listConnections`,
   `#createConnections`, `#linkConnectionToSolution`).
+- `.github/instructions/dataverse-actions.instructions.md` —
+  resolution protocol for adding a Dataverse / Dynamics 365 / D365 CE
+  / D365 CRM / CDS record action (uses `#listDataverseTables`,
+  `#dataverseTableMetadata`, `#dataverseOptionSet`). Always ask the
+  user before fetching schema, in plain language.
 
 ## Deep references (load on demand)
 
@@ -136,3 +172,8 @@ referencing them explicitly.
   for all WDL function categories (string, collection, logical, math,
   date/time, conversion, JSON manipulation, URI parsing). Load when
   writing non-trivial expressions or when a function's behaviour is unclear.
+- `docs/flow-skill/06-dataverse-authoring.md` — end-to-end authoring
+  reference for Dataverse / Dynamics 365 actions: the three metadata
+  tools, the `@odata.bind` shape, EntitySetName vs LogicalName,
+  required-level guide, and a pitfall table. Load when about to write
+  or repair a `shared_commondataserviceforapps` action.

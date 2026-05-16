@@ -21,6 +21,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 - Repairing or generating a `runAfter` graph
 - Inserting, replacing, or rewiring an `OpenApiConnection` action
 - Adding a connector action that needs a connection reference not yet declared in `properties.connectionReferences`
+- Adding, editing, or repairing a Dataverse / Dynamics 365 / D365 CE / D365 CRM / CDS record action (Create / Update / Get / List / Delete on the `shared_commondataserviceforapps` connector)
 - Splitting a long flow into Scopes or extracting a child flow
 - Auditing a `Foreach` that mutates data
 - Composing or fixing a WDL expression (`@{...}` / `@expression(...)`)
@@ -34,6 +35,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 | `.github/instructions/flow-json.instructions.md` | Per-operation structural rules — trigger and action required fields, Foreach concurrency, list-operation pagination, Teams recipient payload |
 | `.github/instructions/expressions.instructions.md` | Workflow Definition Language expression rules (null safety, `split`, `union`, SharePoint column shapes, casing) |
 | `.github/instructions/connection-references.instructions.md` | Resolution protocol for adding a connector action that needs a new connection reference (look up via `#listConnections`, create via `#createConnections`, attach via `#linkConnectionToSolution`) |
+| `.github/instructions/dataverse-actions.instructions.md` | Resolution protocol for adding a Dataverse / Dynamics 365 / D365 CE / D365 CRM / CDS record action (ask the user before fetching, resolve the table via `#listDataverseTables`, pull schema via `#dataverseTableMetadata`, pull option-set values via `#dataverseOptionSet`) |
 
 ## Anchor Patterns
 
@@ -62,6 +64,15 @@ so the assistant's suggestions and the extension's diagnostics agree.
   `Initialize_variable`, `Get_items`, `Send_an_email`, etc. (with or
   without a numeric suffix) are flagged by the `defaultActionName`
   rule. Rename to a verb-noun phrase that describes the work.
+- **Dataverse schema is verified, not invented** —
+  `#dataverseTableMetadata` is the source of truth for attribute
+  logical names, `required` flags, and `@odata.bind` shapes;
+  `#dataverseOptionSet` is the source of truth for picklist /
+  choice / state / status / boolean values. Before authoring a
+  `shared_commondataserviceforapps` action, ask the user in plain
+  language whether to pull schema context, then call the tools. The
+  `inputs.parameters.entityName` slot is the **EntitySetName** (plural
+  collection name), never the LogicalName.
 
 ## How the assistant picks these files up
 

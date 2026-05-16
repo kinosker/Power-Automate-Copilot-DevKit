@@ -104,6 +104,14 @@ No tool calls required.
 5. Write the new action with `inputs.host.connectionName` pointing at
    the fresh key.
 
+> **Dataverse follow-up:** if the connector you just wired is
+> `shared_commondataserviceforapps` (Dataverse / Dynamics 365 / D365
+> CE / D365 CRM / CDS), STOP here and switch to
+> `dataverse-actions.instructions.md` BEFORE writing the action
+> body — that protocol's Stage A asks the user (in plain language)
+> whether to pull table-schema context so attribute names,
+> `@odata.bind` shapes, and option-set values are correct.
+
 If the user says "none of these match", fall through to Stage C.
 
 ## Stage C — Nothing usable, create one
