@@ -157,8 +157,9 @@ export async function downloadSolution(
     // freshly written manifest immediately.
     ConnectionReferenceService.clearCache(targetFolder);
 
-    const uri = vscode.Uri.file(targetFolder);
-    await vscode.commands.executeCommand('revealInExplorer', uri);
+    const workflowsFolder = path.join(targetFolder, 'Workflows');
+    const revealPath = (await folderExists(workflowsFolder)) ? workflowsFolder : targetFolder;
+    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(revealPath));
 
     // Record the post-download snapshot so future downloads can detect drift.
     if (state) {

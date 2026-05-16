@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { AuthService, OrgInfo } from './platform/AuthService';
 import { FlowTreeProvider, SolutionInfo, FlowInfo } from './tree/FlowTreeProvider';
 import { downloadSolution } from './commands/download';
@@ -48,6 +49,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider(TREE_VIEW_ID, tree)
     );
+
+    // New workspace hardening: if this workspace has no established project
+    // state, clear any existing auth session so users are forced to pick the
+    // intended account/tenant before selecting an environment.
+    void (async () => {
+        try {
+            if ((await shouldForceFreshSignIn(auth)) && (await auth.hasActiveProfile())) {
+                await auth.signOut();
+                output.appendLine('[auth] new workspace detected; signed out existing session.');
+                tree.refresh();
+            }
+        } catch (e: any) {
+            output.appendLine(`[auth] activation sign-out check failed: ${e?.message ?? e}`);
+        }
+    })();
 
     // Diagnostics for flow validation; ensure cleanup on deactivate.
     context.subscriptions.push({ dispose: disposeDiagnosticCollection });
@@ -254,7 +270,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         try {
             await auth.signIn();
             vscode.window.showInformationMessage('Signed in to Power Platform.');
-            const picked = await pickAndSelectEnvironment(auth);
+            const picked = await pickAndSelectEnvironment(auth, { signedInThisAction: true });
             if (picked?.EnvironmentId && !pins.get(picked.EnvironmentId)) {
                 await vscode.commands.executeCommand(commandId('pickSolution'));
             }
@@ -525,8 +541,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void promptSkillUpdateOnActivation(context, output, tree);
 }
 
-async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | undefined> {
-    if (!(await auth.hasActiveProfile())) {
+async function pickAndSelectEnvironment(
+    auth: AuthService,
+    opts?: { signedInThisAction?: boolean }
+): Promise<OrgInfo | undefined> {
+    const forceFreshSignIn = await shouldForceFreshSignIn(auth);
+    if (forceFreshSignIn && !opts?.signedInThisAction) {
+        // New workspace: force account-picker UX so the user doesn't
+        // accidentally reuse a session from another tenant/workspace.
+        try {
+            await auth.signOut();
+        } catch {
+            /* best-effort: continue to sign-in */
+        }
+        await auth.signIn();
+    } else if (!(await auth.hasActiveProfile())) {
         const signIn = await vscode.window.showInformationMessage(
             'Sign in to Power Platform before selecting an environment.',
             'Sign In'
@@ -537,6 +566,51 @@ async function pickAndSelectEnvironment(auth: AuthService): Promise<OrgInfo | un
         await auth.signIn();
     }
     return promptManualEnvironment(auth);
+}
+
+async function shouldForceFreshSignIn(auth: AuthService): Promise<boolean> {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) {
+        return false;
+    }
+    // Already selected in this workspace: don't force sign-out.
+    if (auth.getSelectedEnvironment()?.EnvironmentUrl) {
+        return false;
+    }
+    // Workspace has skill installed/update marker: treat as established.
+    const skillStatus = await getSkillInstallStatus(ws.uri);
+    if (skillStatus !== 'missing') {
+        return false;
+    }
+    // Any downloaded flows in solutions root means this workspace already has
+    // active project state; do not force sign-out.
+    if (await hasDownloadedFlows(ws.uri.fsPath)) {
+        return false;
+    }
+    return true;
+}
+
+async function hasDownloadedFlows(workspaceRoot: string): Promise<boolean> {
+    const solutionsRoot = getSolutionsRoot(workspaceRoot).absolutePath;
+    let solutions: string[];
+    try {
+        solutions = await fs.readdir(solutionsRoot);
+    } catch {
+        return false;
+    }
+    for (const sol of solutions) {
+        const workflowsDir = path.join(solutionsRoot, sol, 'Workflows');
+        let files: string[];
+        try {
+            files = await fs.readdir(workflowsDir);
+        } catch {
+            continue;
+        }
+        if (files.some(f => f.toLowerCase().endsWith('.json'))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 async function promptManualEnvironment(auth: AuthService): Promise<OrgInfo | undefined> {
