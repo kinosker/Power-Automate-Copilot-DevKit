@@ -28,7 +28,7 @@ import { ListDataverseTablesTool } from './tools/listDataverseTablesTool';
 import { GetDataverseTableMetadataTool } from './tools/getDataverseTableMetadataTool';
 import { GetDataverseOptionSetTool } from './tools/getDataverseOptionSetTool';
 import { AnalyzeFailedFlowRunTool } from './tools/analyzeFailedFlowRunTool';
-import { analyzeFailedFlowRunCommand } from './commands/analyzeFailedFlowRun';
+import { analyzeFailedFlowRunCommand, analyzeFailedFlowRunWithCopilotCommand } from './commands/analyzeFailedFlowRun';
 import { ResubmitFlowRunTool } from './tools/resubmitFlowRunTool';
 import { resubmitFlowRunCommand } from './commands/resubmitFlowRun';
 import { FlowErrorReportStore } from './platform/FlowErrorReportStore';
@@ -533,6 +533,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await analyzeFailedFlowRunCommand(auth, tree, pins, output, errorStore, node);
         } catch (e: any) {
             vscode.window.showErrorMessage(`Analyze failed flow run failed: ${e.message ?? e}`);
+        }
+    });
+
+    register(commandId('analyzeFailedFlowRunWithCopilot'), async (node?: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+        try {
+            await analyzeFailedFlowRunWithCopilotCommand(auth, tree, pins, output, errorStore, node);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Analyze failed flow run with Copilot failed: ${e.message ?? e}`);
         }
     });
 

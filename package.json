@@ -97,6 +97,11 @@
         "icon": "$(error)"
       },
       {
+        "command": "powerAutomateCopilotDevKit.analyzeFailedFlowRunWithCopilot",
+        "title": "Power Automate: Analyze Failed Flow Run with Copilot",
+        "icon": "$(search)"
+      },
+      {
         "command": "powerAutomateCopilotDevKit.resubmitFlowRun",
         "title": "Power Automate: Resubmit Flow Run",
         "icon": "$(debug-restart)"
@@ -180,27 +185,9 @@
           "group": "inline"
         },
         {
-          "command": "powerAutomateCopilotDevKit.uploadFlow",
-          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow"
-        },
-        {
-          "command": "powerAutomateCopilotDevKit.openFlowDefinition",
-          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow"
-        },
-        {
           "command": "powerAutomateCopilotDevKit.viewFlowInPortal",
           "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
           "group": "powerAutomateCopilotDevKit@1"
-        },
-        {
-          "command": "powerAutomateCopilotDevKit.analyzeFailedFlowRun",
-          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
-          "group": "powerAutomateCopilotDevKit@2"
-        },
-        {
-          "command": "powerAutomateCopilotDevKit.resubmitFlowRun",
-          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
-          "group": "powerAutomateCopilotDevKit@2"
         },
         {
           "command": "powerAutomateCopilotDevKit.refreshFlow",
@@ -208,9 +195,14 @@
           "group": "powerAutomateCopilotDevKit@2"
         },
         {
-          "command": "powerAutomateCopilotDevKit.createConnections",
+          "command": "powerAutomateCopilotDevKit.analyzeFailedFlowRunWithCopilot",
           "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
           "group": "powerAutomateCopilotDevKit@3"
+        },
+        {
+          "command": "powerAutomateCopilotDevKit.resubmitFlowRun",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
+          "group": "powerAutomateCopilotDevKit@4"
         },
         {
           "command": "powerAutomateCopilotDevKit.createConnections",
@@ -394,8 +386,8 @@
       {
         "name": "powerautomatecopilotdevkit_analyzeFailedFlowRun",
         "displayName": "Analyze Failed Power Automate Flow Run",
-        "modelDescription": "Fetch the most recent failed run(s) of a Power Automate flow via the Power Automate Flow API and return a structured JSON report — per-run status, error code/message, and per-failed-action error details with inputs and outputs. Use when the user asks to debug, analyze, diagnose, or troubleshoot a failing flow, or asks why a flow failed / errored / crashed / broke. Examples: 'why is my Approval flow failing', 'analyze the last failed run', 'debug the Notification flow', 'show me the error from yesterday's run'. The `flowName` argument is OPTIONAL when the solution contains exactly one flow. The `solutionName` argument is OPTIONAL and defaults to the workspace's pinned solution. The `top` argument is OPTIONAL (default 5, max 25) and caps how many recent failed runs to return. REQUIREMENT: Power Automate (Flow) consent must have been granted on this workspace — if the tool reports that access has not been granted, ask the user to click 'Grant Power Automate (Flow) access' in the Power Automate tree view and retry. Read-only. Do NOT use this tool to upload, download, modify, retry, or resubmit flows or runs.",
-        "userDescription": "Fetch recent failed runs of a flow and return structured error details for analysis.",
+        "modelDescription": "Diagnose a failing Power Automate flow via the Power Automate Flow API in two stages so the user stays in control. STAGE A (default, no `runId`): list the most recent failed runs of a flow with their start time, status and top-level error — Copilot MUST show this list to the user and ask which run to investigate before fetching any details. STAGE B (re-invoke with `runId`): fetch action-level error details for that ONE run, save the full report under `ref/error/<slug>/...json`, tag it back to the on-disk flow JSON when available, and instruct Copilot to ASK THE USER whether to begin analysis before reading the report or proposing fixes. Flow resolution (when `flowName` is omitted): (1) if the user's active editor is a downloaded flow JSON under `<solutions>/<solution>/Workflows/`, that flow is used automatically; (2) else the pinned solution's single flow if it has exactly one; (3) else the tool returns the candidate list and asks the user which flow. Use this tool when the user asks to debug, analyze, diagnose, or troubleshoot a failing flow, or asks why a flow failed / errored / crashed / broke. Examples: 'why is my Approval flow failing', 'analyze the last failed run', 'debug the Notification flow', 'show me the error from yesterday's run'. Arguments: `flowName` OPTIONAL (display name, internal name, or workflow GUID). `solutionName` OPTIONAL (unique name preferred, defaults to the pinned solution). `top` OPTIONAL (1-25, default 10) — how many failed runs to LIST in stage A, ignored in stage B. `runId` OPTIONAL — set to switch to stage B and download details for that specific run. REQUIREMENT: Power Automate (Flow) consent must have been granted on this workspace — if the tool reports that access has not been granted, ask the user to click 'Grant Power Automate (Flow) access' in the Power Automate tree view and retry. Read-only. Do NOT use this tool to upload, download, modify, retry, or resubmit flows or runs.",
+        "userDescription": "List recent failed runs of a flow, then download a chosen run's error report for analysis.",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "analyzeFailedFlowRun",
         "tags": [
@@ -409,15 +401,19 @@
           "properties": {
             "flowName": {
               "type": "string",
-              "description": "OPTIONAL. Display name of the flow, its internal Name, or its workflow GUID. Omit when the solution contains exactly one flow."
+              "description": "OPTIONAL. Display name of the flow, its internal Name, or its workflow GUID. Omit when the active editor shows a downloaded flow JSON or when the solution contains exactly one flow."
             },
             "solutionName": {
               "type": "string",
-              "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution that contains the flow. Omit to use the solution pinned to this workspace."
+              "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution that contains the flow. Omit to use the solution pinned to this workspace or inferred from the active editor's path."
             },
             "top": {
               "type": "number",
-              "description": "OPTIONAL. Number of most-recent failed runs to fetch (default 5, max 25)."
+              "description": "OPTIONAL. Number of most-recent failed runs to LIST in stage A (default 10, max 25). Ignored when `runId` is set."
+            },
+            "runId": {
+              "type": "string",
+              "description": "OPTIONAL. When provided, the tool fetches action-level error details for ONLY this run and saves the full report under `ref/error/...`. Pass the runId you got from a prior stage-A invocation after the user picked which failed run to analyze."
             }
           }
         }

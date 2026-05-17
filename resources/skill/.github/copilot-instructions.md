@@ -94,18 +94,50 @@ the checks in `src/validation/flowLinter.ts`.
 
 ## Failed-run analysis (the "why is my flow failing?" workflow)
 
-The typical troubleshooting sequence is:
+`#analyzeFailedFlowRun` is a **two-stage** tool. Respect the stages —
+they exist to keep the user in control of which run gets analyzed.
+
+**Stage A — list recent failures (default; no `runId`):**
 
 1. User asks to debug / analyze / diagnose a failing flow.
-2. You call `#analyzeFailedFlowRun` (or the user runs the
-   **Power Automate: Analyze Failed Flow Run** command / right-click
-   on a flow in the tree).
-3. The tool persists the **full** report to
-   `ref/error/<flow-slug>/<flow-slug>-error-<1|2|3>.json` and returns
-   ONLY a compact summary plus the saved path.
-4. Read that file via your file-read tool when you need the inputs /
-   outputs / stack-trace detail to propose a fix. Do NOT ask the
-   user to paste the JSON — it is already on disk in the workspace.
+2. You call `#analyzeFailedFlowRun` with NO `runId`. The tool
+   resolves the flow in this priority order:
+   - If the user has a downloaded flow JSON open in the editor
+     (`<solutions>/<solution>/Workflows/<name>-<guid>.json`), that
+     flow is used automatically — no need to ask.
+   - Otherwise, if the pinned solution has exactly one flow, that
+     one is used.
+   - Otherwise, the tool returns the list of candidate flows; ask
+     the user which one and re-invoke with `flowName`.
+3. The tool returns `stage: "list-failed-runs"` plus a summary list
+   of the most-recent failed runs (default 10, max 25), with
+   `runId`, start/end time, error code, and error message — **but
+   no per-action detail and nothing saved to disk yet**.
+4. Show that list to the user verbatim or as a tidy bulleted summary
+   and ask which run to investigate. **Do NOT pick a run for them.**
+
+**Stage B — download one run (re-invoke with `runId`):**
+
+5. Once the user picks, re-invoke `#analyzeFailedFlowRun` with the
+   same flow/solution arguments plus `runId` set to their choice.
+6. The tool fetches action-level errors for THAT run only, persists
+   the full report to
+   `ref/error/<flow-slug>/<flow-slug>-error-<1|2|3>.json`, and
+   returns `stage: "downloaded-run"` plus the saved path.
+7. **Do NOT begin analysis yet.** The tool will explicitly tell you
+   to ask the user: *"Should I begin analyzing the downloaded error
+   report and the flow code?"* Wait for confirmation. Only after
+   they agree may you read the saved report and propose a fix.
+8. When you do read the report, use your file-read tool — the JSON
+   is on disk; do NOT ask the user to paste it.
+9. The report's `flow.localFile` field is the workspace-relative
+   path of the downloaded flow JSON the error belongs to. Open that
+   file before proposing edits — it is the canonical source of
+   truth for the flow definition you'll modify and re-upload. If
+   `flow.localFile` is `null` / missing, the solution has not been
+   downloaded to this workspace; tell the user to run
+   **Power Automate: Download Solution** for `flow.solution` before
+   you propose any edits.
 
 Hard rules for the `ref/error/` folder:
 
@@ -185,12 +217,26 @@ Hard rules:
   collection name from `table.entitySet`), not the LogicalName.
   `accounts`, not `account`. This is the single most common cause of
   Create-record runtime failures.
-- Inside `inputs.parameters.item`, attribute keys are LogicalNames
-  (lowercase). Lookup writes use `"<navProperty>@odata.bind":
-  "/<entitySet>(<guid>)"` with values from the metadata tool's
-  `bindings` array — NOT the `_value` postfix (that is read-only).
-  Picklist / Choice / Status writes use the integer `value` from the
-  option-set, never the label. Boolean writes use `true` / `false`.
+- Columns are written as **FLAT `item/<field>` keys** directly under
+  `inputs.parameters`, NEVER as a nested `item: { ... }` object —
+  the `OpenApiConnection` runtime silently drops the nested form
+  on save and the action comes back with empty values. Attribute
+  keys are LogicalNames (lowercase). Lookup writes use
+  `"item/<navProperty>@odata.bind": "/<entitySet>(<guid>)"` with
+  values from the metadata tool's `bindings` array — NOT the
+  `_value` postfix (that is read-only). Picklist / Choice / Status
+  writes use the integer `value` from the option-set, never the
+  label. Boolean writes use `true` / `false`.
+- Activity tables (`task`, `email`, `phonecall`, `appointment`, …)
+  expose the polymorphic `regardingobjectid` as relationship-named
+  parameters: `item/regardingobjectid_<target>_<activity>@odata.bind`
+  (e.g. `item/regardingobjectid_account_task@odata.bind`). The bare
+  `_<target>@odata.bind` form fails save with
+  `WorkflowOperationParametersExtraParameter`. Note also that
+  `#dataverseTableMetadata` currently 400s on activity tables — fall
+  back to OOTB attribute names (`subject`, `description`,
+  `scheduledstart`/`end`, `prioritycode`, `statecode`, `statuscode`)
+  and surface a one-line heads-up to the user.
 - The full stage-by-stage protocol — including the resolve-the-table,
   schema-fetch, option-set-fetch, stop-conditions, and wrong/right
   examples — lives in

@@ -82,7 +82,7 @@ Returns:
   "table": { "logicalName": "account", "entitySet": "accounts", "primaryId": "accountid", "primaryName": "name", ... },
   "attributes": [
     {
-      "name": "name",                   // <-- LogicalName, what you write into inputs.parameters.item
+      "name": "name",                   // <-- LogicalName, what you write into `item/<name>` parameters
       "type": "String",
       "required": "ApplicationRequired", // <-- must appear on Create
       "createReadOnly": false,
@@ -154,30 +154,111 @@ Never use the label. Never approximate (`"Accounting"` → `1` is correct;
       "operationId": "CreateRecord"
     },
     "parameters": {
-      "entityName": "accounts",          // EntitySetName (plural), NOT 'account'
-      "item": {
-        "name": "Contoso",               // attribute LogicalName
-        "industrycode": 1,               // option-set integer value
-        "primarycontactid@odata.bind": "/contacts(@{triggerOutputs()?['body/contactid']})"
-      }
+      "entityName": "accounts",                       // EntitySetName (plural), NOT 'account'
+      "item/name": "Contoso",                          // attribute LogicalName, FLAT key
+      "item/industrycode": 1,                          // option-set integer value
+      "item/primarycontactid@odata.bind":              // lookup: <navProperty>@odata.bind
+        "/contacts(@{triggerOutputs()?['body/contactid']})"
     }
   },
   "runAfter": {}
 }
 ```
 
-### Two rules that catch 90 % of failures
+### Three rules that catch 95 % of failures
 
 1. **`entityName` is the EntitySetName** — the plural collection name
    from `table.entitySet`, not the LogicalName.
    - `accounts`, not `account`
    - `contacts`, not `contact`
    - `opportunities`, not `opportunity`
-2. **Lookup writes use `@odata.bind`**, never the `_value` postfix.
-   - Write: `"primarycontactid@odata.bind": "/contacts(<guid>)"`
+2. **Use the FLAT `item/<field>` key form**, never a nested
+   `item: { ... }` object. Power Automate's `OpenApiConnection`
+   runtime exposes each writable column as its own flat parameter
+   in the connector swagger (`item/subject`, `item/description`,
+   `item/<navProperty>@odata.bind`). The nested form is silently
+   dropped — the server normalises the action and the saved JSON
+   comes back with empty values (e.g. `"item/subject": ""`). This
+   is the #1 regression after pasting in Logic Apps-style JSON.
+3. **Lookup writes use `@odata.bind`**, never the `_value` postfix.
+   - Write: `"item/primarycontactid@odata.bind": "/contacts(<guid>)"`
    - Read (in a separate Get/List response): `_primarycontactid_value`
    - The `entitySet` you put in the path comes from the `bindings[].entitySet`
      field, not from your own pluralization.
+
+## Activity tables — the polymorphic `regardingobjectid` lookup
+
+Every activity-derived table (`task`, `email`, `phonecall`,
+`appointment`, `fax`, `letter`, `recurringappointmentmaster`,
+`socialactivity`, plus custom activities) has a polymorphic
+`regardingobjectid` lookup that can target many entities. The
+connector swagger exposes ONE parameter per target type, and the
+parameter name is **relationship-named** — it includes BOTH the
+target entity AND the activity entity:
+
+> `item/regardingobjectid_<targetentity>_<activity>@odata.bind`
+
+Examples for the `task` table:
+
+| Regarding target | Parameter key | Value |
+|---|---|---|
+| Account | `item/regardingobjectid_account_task@odata.bind` | `/accounts(<guid>)` |
+| Contact | `item/regardingobjectid_contact_task@odata.bind` | `/contacts(<guid>)` |
+| Opportunity | `item/regardingobjectid_opportunity_task@odata.bind` | `/opportunities(<guid>)` |
+| Lead | `item/regardingobjectid_lead_task@odata.bind` | `/leads(<guid>)` |
+| Case (incident) | `item/regardingobjectid_incident_task@odata.bind` | `/incidents(<guid>)` |
+
+Swap `_task` for `_email`, `_phonecall`, `_appointment`, etc. for
+those activity tables.
+
+The **bare** `item/regardingobjectid_<targetentity>@odata.bind`
+(without the activity suffix) is the raw OData navigation property
+but is NOT exposed as a connector parameter. Using it fails save
+with:
+
+> `WorkflowOperationParametersExtraParameter` —
+> *The API operation does not contain a definition for parameter*
+> `'item/regardingobjectid_account@odata.bind'`
+
+### Other polymorphic activity lookups follow the same pattern
+
+- **`ownerid`** (Owner / Team) → `item/ownerid_<owner-type>_<activity>@odata.bind`
+  — e.g. `item/ownerid_systemusers_task@odata.bind` (path
+  `/systemusers(<guid>)`), `item/ownerid_teams_task@odata.bind`
+  (path `/teams(<guid>)`).
+- **Activity-party fields** (`to`, `cc`, `bcc`, `from`,
+  `requiredattendees`, `optionalattendees`, `organizer`) are NOT
+  single-lookup writes — they are **array-typed** connector
+  parameters (`item/to`, `item/cc`, …). Each element is an object
+  with `participationtypemask` and
+  `partyid@odata.bind` / `partyid_<type>@odata.bind`. Do not try to
+  use a single `@odata.bind` for these.
+
+### Known platform bug: `#dataverseTableMetadata` 400s on activity tables
+
+Calling `#dataverseTableMetadata` against any activity-derived
+table (`task`, `email`, `phonecall`, `appointment`, `annotation`,
+`activitypointer`) returns:
+
+> HTTP 400 — *Could not find a property named 'Targets' on type*
+> `'Microsoft.Dynamics.CRM.AttributeMetadata'`
+
+This is a server-side bug in how the polymorphic `Targets`
+collection is projected through the `EntityDefinitions` endpoint
+the tool uses. `forceRefresh: true` does not help.
+
+Fallback when the tool fails for an activity table:
+
+1. Use the table above for the `regardingobjectid_<target>_<activity>`
+   binding key.
+2. Use the standard OOTB activity attribute LogicalNames:
+   `subject` (primary name, ApplicationRequired on Create),
+   `description`, `scheduledstart`, `scheduledend`, `actualstart`,
+   `actualend`, `prioritycode`, `statecode`, `statuscode`.
+3. Surface a one-line note to the user explaining the bug and
+   that you are authoring with built-in knowledge.
+4. Do not retry the metadata tool against the same activity table
+   in the same session.
 
 ## Operation IDs for the Dataverse connector
 
@@ -219,12 +300,14 @@ not synthesize it from other columns.
 | Pitfall | Wrong | Right |
 |---|---|---|
 | Plural entity name | `"entityName": "account"` | `"entityName": "accounts"` |
-| Display-cased attribute | `"FullName": ...` | `"fullname": ...` |
-| Schema vs logical name | `"PrimaryContactId": ...` | `"primarycontactid@odata.bind": ...` |
-| Lookup as integer | `"primarycontactid": "<guid>"` | `"primarycontactid@odata.bind": "/contacts(<guid>)"` |
-| Picklist as label | `"industrycode": "Accounting"` | `"industrycode": 1` |
-| Boolean as label | `"creditonhold": "Yes"` | `"creditonhold": true` |
-| `_value` postfix on writes | `"_primarycontactid_value@odata.bind": "/contacts(<guid>)"` | `"primarycontactid@odata.bind": "/contacts(<guid>)"` |
+| Nested `item` object | `"item": { "name": ... }` | `"item/name": ...` |
+| Display-cased attribute | `"item/FullName": ...` | `"item/fullname": ...` |
+| Schema vs logical name | `"item/PrimaryContactId": ...` | `"item/primarycontactid@odata.bind": ...` |
+| Lookup as integer | `"item/primarycontactid": "<guid>"` | `"item/primarycontactid@odata.bind": "/contacts(<guid>)"` |
+| Activity regarding missing `_<activity>` suffix | `"item/regardingobjectid_account@odata.bind": ...` | `"item/regardingobjectid_account_task@odata.bind": ...` |
+| Picklist as label | `"item/industrycode": "Accounting"` | `"item/industrycode": 1` |
+| Boolean as label | `"item/creditonhold": "Yes"` | `"item/creditonhold": true` |
+| `_value` postfix on writes | `"item/_primarycontactid_value@odata.bind": "/contacts(<guid>)"` | `"item/primarycontactid@odata.bind": "/contacts(<guid>)"` |
 
 ## Cache and refresh
 

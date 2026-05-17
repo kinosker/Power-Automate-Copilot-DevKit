@@ -43,6 +43,7 @@ type Node =
     | FlowNode
     | FlowDiffActionNode
     | FlowRefreshActionNode
+    | FlowAnalyzeFailedActionNode
     | MessageNode
     | SkillInstallNode
     | GrantFlowAccessNode;
@@ -188,6 +189,24 @@ class FlowRefreshActionNode extends vscode.TreeItem {
         this.command = {
             command: commandId('refreshFlow'),
             title: 'Pull and discard local changes',
+            arguments: [{ flow, solution }]
+        };
+    }
+}
+
+class FlowAnalyzeFailedActionNode extends vscode.TreeItem {
+    readonly kind = 'flowAnalyzeFailedAction' as const;
+    constructor(
+        public readonly flow: FlowInfo,
+        public readonly solution: SolutionInfo
+    ) {
+        super('Analyze failed flow run with Copilot', vscode.TreeItemCollapsibleState.None);
+        this.contextValue = 'flowAnalyzeFailedAction';
+        this.iconPath = new vscode.ThemeIcon('search');
+        this.tooltip = 'Download the latest failed run, then hand the report to GitHub Copilot Chat for root-cause analysis.';
+        this.command = {
+            command: commandId('analyzeFailedFlowRunWithCopilot'),
+            title: 'Analyze failed flow run with Copilot',
             arguments: [{ flow, solution }]
         };
     }
@@ -519,6 +538,7 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 const children: vscode.TreeItem[] = [];
                 children.push(new FlowDiffActionNode(element.flow, element.solution, drift));
                 children.push(new FlowRefreshActionNode(element.flow, element.solution));
+                children.push(new FlowAnalyzeFailedActionNode(element.flow, element.solution));
                 return children as Node[];
             }
             return [];

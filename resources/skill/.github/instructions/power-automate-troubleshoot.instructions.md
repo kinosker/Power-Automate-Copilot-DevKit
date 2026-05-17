@@ -27,7 +27,14 @@ JSON. Before any follow-up question:
    carries each failed action's `error.code`, `error.message`,
    `inputs`, and `outputs` — every fact the diagnostic loop below
    asks for.
-3. Cite the failed action by `name` and quote `error.code` /
+3. The report's `flow.localFile` field is the workspace-relative
+   path of the downloaded flow JSON the error belongs to. Open
+   that file before proposing edits — it is the canonical source
+   of truth for the flow definition. If `flow.localFile` is
+   `null` / missing, the solution hasn't been downloaded here yet;
+   ask the user to run **Power Automate: Download Solution** for
+   `flow.solution` before you propose changes.
+4. Cite the failed action by `name` and quote `error.code` /
    `error.message` / the relevant `inputs` slice when proposing a
    fix. Do not paraphrase from memory.
 
