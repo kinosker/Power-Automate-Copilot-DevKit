@@ -36,6 +36,8 @@ The DevKit is designed to reduce effort in the repeated edit, validate, upload, 
 | Static analysis with schema checks | JSON parsing, schema validation, and flow-specific linting catch common issues before upload. | 40-60% less manual review for structural issues |
 | Error analysis and auto fix with AI | Upload errors from VS Code are available directly to Copilot, so the error can be analyzed and fixed in the local flow file. | 50-70% less trial-and-error during upload fixes |
 | Single-flow upload | A changed flow can be uploaded directly from VS Code without browser-based export, repack, and import cycles. | 60-80% fewer manual ALM steps for small flow edits |
+<img width="923" height="291" alt="image" src="https://github.com/user-attachments/assets/76d51966-beaf-4d1b-a37b-b063f9921ce2" />
+
 
 Key impact points:
 
@@ -58,6 +60,7 @@ Key impact points:
 | Recovery | Rollback depends on manual backups or solution history. | The current remote flow JSON is backed up before upload. |
 | Connection references | Missing or unbound references may be found late. | Connection references can be checked, listed, created, and linked from the VS Code workflow. |
 | End-to-end VS Code workflow | Flow work moves between browser export/import, local files, chat, manual validation, and portal troubleshooting. | Download, edit with AI guidance, validate, compare, fix upload errors, manage connection references, back up, and upload from VS Code. |
+<img width="920" height="681" alt="image" src="https://github.com/user-attachments/assets/41e806b4-ff3d-4ff7-8a64-46867bc7ce2a" />
 
 ## Installation
 
