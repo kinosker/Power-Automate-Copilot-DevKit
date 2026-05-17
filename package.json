@@ -2,7 +2,7 @@
   "name": "power-automate-copilot-devkit",
   "displayName": "Power Automate Copilot DevKit",
   "description": "Edit Power Automate flows in VS Code with GitHub Copilot skills, local validation, drift checks, and safe upload back to Dataverse.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "TienLongKuan",
   "icon": "src/image/Logo.png",
   "license": "MIT",
