@@ -304,6 +304,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 
+    register(commandId('grantFlowAccess'), async () => {
+        tree.setFlowGrantInProgress(true);
+        try {
+            const ok = await auth.grantFlowAccess();
+            if (ok) {
+                vscode.window.showInformationMessage('Power Automate (Flow) access granted.');
+            } else {
+                vscode.window.showWarningMessage(
+                    'Power Automate (Flow) access was not granted. Continuing in Dataverse-only mode.'
+                );
+            }
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Grant Power Automate (Flow) access failed: ${e.message ?? e}`);
+        } finally {
+            // Single refresh — clear the loading flag last so the node
+            // transitions straight from spinner to its new granted/notGranted
+            // state without an intermediate flicker.
+            tree.setFlowGrantInProgress(false);
+        }
+    });
+
     register(commandId('selectEnvironment'), async () => {
         try {
             const picked = await pickAndSelectEnvironment(auth, output);

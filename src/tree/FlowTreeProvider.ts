@@ -44,7 +44,8 @@ type Node =
     | FlowDiffActionNode
     | FlowRefreshActionNode
     | MessageNode
-    | SkillInstallNode;
+    | SkillInstallNode
+    | GrantFlowAccessNode;
 
 class EnvironmentNode extends vscode.TreeItem {
     readonly kind = 'environment' as const;
@@ -221,9 +222,67 @@ class SkillInstallNode extends vscode.TreeItem {
     }
 }
 
+/**
+ * State-aware status node for Power Automate (Flow) access. Always
+ * rendered above the environment so users see at a glance whether they
+ * have Flow access, and can click to grant it when missing.
+ *
+ * - `'granted'`     \u2014 green check, informational, no click action.
+ * - `'loading'`     \u2014 spinner, shown while {@link AuthService.grantFlowAccess}
+ *                     is awaiting the consent dialog response.
+ * - `'notGranted'`  \u2014 yellow shield, click triggers the grant command.
+ */
+class GrantFlowAccessNode extends vscode.TreeItem {
+    readonly kind = 'grantFlowAccess' as const;
+    constructor(state: 'granted' | 'loading' | 'notGranted') {
+        const labelByState = {
+            granted: 'With Power Automate (Flow) access',
+            loading: 'Granting Power Automate (Flow) access\u2026',
+            notGranted: 'Grant Power Automate (Flow) access'
+        } as const;
+        super(labelByState[state], vscode.TreeItemCollapsibleState.None);
+        this.contextValue = `grantFlowAccess.${state}`;
+        if (state === 'granted') {
+            this.iconPath = new vscode.ThemeIcon(
+                'pass-filled',
+                new vscode.ThemeColor('testing.iconPassed')
+            );
+            this.tooltip = 'Power Automate (Flow) access has been granted for this signed-in account.';
+        } else if (state === 'loading') {
+            // `sync~spin` is the standard VS Code codicon for an animated
+            // spinner in TreeView surfaces.
+            this.iconPath = new vscode.ThemeIcon('sync~spin');
+            this.tooltip = 'Waiting for Power Automate (Flow) consent\u2026';
+        } else {
+            this.iconPath = new vscode.ThemeIcon(
+                'shield',
+                new vscode.ThemeColor('list.warningForeground')
+            );
+            this.tooltip =
+                'Signed in with Dataverse-only access. Click to retry Power Automate (Flow) consent so flow run analytics and Flow-API-only environments become available.';
+            this.command = {
+                command: commandId('grantFlowAccess'),
+                title: 'Grant Power Automate (Flow) access'
+            };
+        }
+    }
+}
+
 export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
     private readonly _onDidChange = new vscode.EventEmitter<Node | undefined>();
     readonly onDidChangeTreeData = this._onDidChange.event;
+
+    /**
+     * `true` while {@link AuthService.grantFlowAccess} is awaiting the
+     * consent dialog. Used to render the spinner state on the Flow access
+     * node. Toggled by the `grantFlowAccess` command in `extension.ts`
+     * before / after the await.
+     */
+    private flowGrantInProgress = false;
+    setFlowGrantInProgress(value: boolean): void {
+        this.flowGrantInProgress = value;
+        this.refresh();
+    }
 
     /**
      * Per-solution drift cache built lazily during `getChildren`. Keyed by
@@ -376,6 +435,16 @@ export class FlowTreeProvider implements vscode.TreeDataProvider<Node> {
                 const roots: Node[] = [];
                 const env = this.auth.getSelectedEnvironment();
                 if (env) {
+                    // Surface the Flow-access status node ABOVE the
+                    // environment so it's the first thing users see.
+                    // Loading > NotGranted > Granted.
+                    const flowAccessState: 'granted' | 'loading' | 'notGranted' =
+                        this.flowGrantInProgress
+                            ? 'loading'
+                            : this.auth.isDataverseOnlyMode()
+                                ? 'notGranted'
+                                : 'granted';
+                    roots.push(new GrantFlowAccessNode(flowAccessState));
                     roots.push(new EnvironmentNode(env));
                     // Only surface the skill-install affordance once an
                     // environment is loaded, so it doesn't compete with

@@ -369,6 +369,64 @@ export class AuthService {
     }
 
     /**
+     * `true` when the user is signed in under the sticky Dataverse-only
+     * fallback (Flow API consent was declined / failed at some point).
+     * The UI uses this to surface a "Grant Power Automate access" action
+     * that lets the user retry the Flow consent dialog without having to
+     * sign out first.
+     */
+    isDataverseOnlyMode(): boolean {
+        return this.state.get<boolean>(DATAVERSE_ONLY_MODE_KEY) === true;
+    }
+
+    /**
+     * Snapshot of which auth surfaces are currently usable. Cheap — does
+     * not trigger any UI prompts. `flow` reflects only a cached Flow
+     * session (silent probe); a `false` here when `isDataverseOnlyMode()`
+     * is also `false` typically means the user has not signed in yet.
+     */
+    async getAccessState(): Promise<{ dataverse: boolean; flow: boolean; dataverseOnlyMode: boolean }> {
+        const dvOnly = this.isDataverseOnlyMode();
+        const flowSession = dvOnly
+            ? undefined
+            : await this.getFlowSession({ createIfNone: false }).catch(() => undefined);
+        const dvToken = await new DataverseAuth()
+            .getDiscoveryToken({ createIfNone: false })
+            .catch(() => undefined);
+        return { dataverse: !!dvToken, flow: !!flowSession, dataverseOnlyMode: dvOnly };
+    }
+
+    /**
+     * Retry the Flow API consent dialog after the user previously declined
+     * (or fell back to Dataverse-only). Clears the sticky flag and forces
+     * a fresh session-creation attempt so VS Code shows the consent UI
+     * again. On success the sticky flag stays cleared; on user-decline we
+     * restore it so subsequent listings don't keep re-prompting.
+     *
+     * Wire this to the "Grant Power Automate access" nav button.
+     */
+    async grantFlowAccess(): Promise<boolean> {
+        this.log('[auth] grantFlowAccess: clearing sticky Dataverse-only flag and prompting Flow consent.');
+        await this.state.update(DATAVERSE_ONLY_MODE_KEY, undefined);
+        try {
+            const session = await this.getFlowSession({ createIfNone: true, forceNewSession: true });
+            if (!session?.accessToken) {
+                throw new Error('No Flow API access token returned.');
+            }
+            this.log('[auth] grantFlowAccess: Flow consent granted.');
+            return true;
+        } catch (e: any) {
+            const msg = String(e?.message ?? e);
+            this.log(`[auth] grantFlowAccess failed: ${msg}`);
+            if (isUserConsentDeclined(msg)) {
+                this.log('[auth] grantFlowAccess: user declined again; restoring sticky Dataverse-only flag.');
+                await this.state.update(DATAVERSE_ONLY_MODE_KEY, true);
+            }
+            return false;
+        }
+    }
+
+    /**
      * Error thrown by {@link listEnvironments} when no BYO AAD app is
      * configured. Callers can catch this and steer the user into the
      * Configure AAD App wizard.

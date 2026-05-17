@@ -124,6 +124,11 @@
       {
         "command": "powerAutomateCopilotDevKit.configureAadApp",
         "title": "Power Automate: Bring Your Own AAD App Registration (Advanced)"
+      },
+      {
+        "command": "powerAutomateCopilotDevKit.grantFlowAccess",
+        "title": "Power Automate: Grant Power Automate Access",
+        "icon": "$(shield)"
       }
     ],
     "menus": {
