@@ -15,6 +15,31 @@ export const SKILL_VERSION_RELATIVE_PATH = '.github/.power-automate-copilot-devk
 export const WORKSPACE_DATA_DIR = '.power-automate-copilot-devkit';
 export const LEGACY_WORKSPACE_DATA_DIR = '.flowplugin';
 
+/**
+ * Default AAD app registration shipped with the extension so users get the
+ * standard "Permissions requested" consent dialog on first sign-in (the
+ * Flow Studio App-style page) instead of being asked to register their
+ * own app. Users may override via the `powerAutomateCopilotDevKit.aadClientId`
+ * / `aadTenantId` settings.
+ *
+ * The app must be:
+ *   - multi-tenant (`signInAudience = AzureADMultipleOrgs`)
+ *   - public client / allow-public-client-flows = true
+ *   - redirect URI = https://vscode.dev/redirect
+ *   - permissions: Power Automate Service `User` (delegated),
+ *     Dataverse `user_impersonation` (delegated), Microsoft Graph `User.Read`
+ */
+export const DEFAULT_AAD_CLIENT_ID = '5a5cb0f5-3a36-47b9-a1e4-20fd29fa107b';
+
+/**
+ * Tenant authority used by the default AAD app. Accepts a tenant GUID,
+ * `'organizations'` (any work/school account), `'common'`
+ * (work/school + personal), or `'consumers'` (personal only). For a
+ * multi-tenant Power Platform / Flow scenario `'organizations'` is the
+ * right value because Flow APIs do not exist in consumer tenants.
+ */
+export const DEFAULT_AAD_TENANT_ID = 'organizations';
+
 export function commandId(name: string): string {
     return `${COMMAND_PREFIX}.${name}`;
 }

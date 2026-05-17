@@ -100,7 +100,12 @@ export async function downloadSolution(
     const client = new DataverseClient(env.EnvironmentUrl, dvAuth, out);
 
     let flows: WorkflowSummary[] = [];
-    let connectionRefs: { logicalName: string; displayName?: string; connectorId?: string }[] = [];
+    let connectionRefs: {
+        logicalName: string;
+        displayName?: string;
+        connectorId?: string;
+        connectionReferenceId?: string;
+    }[] = [];
     let solutionId: string | undefined;
 
     await vscode.window.withProgress(
@@ -138,7 +143,8 @@ export async function downloadSolution(
                 entries: connectionRefs.map(r => ({
                     logicalName: r.logicalName,
                     displayName: r.displayName,
-                    connectorId: r.connectorId
+                    connectorId: r.connectorId,
+                    connectionReferenceId: r.connectionReferenceId
                 }))
             });
             const meta: SolutionMeta = {

@@ -120,6 +120,10 @@
         "command": "powerAutomateCopilotDevKit.clearDataverseMetadataCache",
         "title": "Power Automate: Clear Dataverse Metadata Cache",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "powerAutomateCopilotDevKit.configureAadApp",
+        "title": "Power Automate: Bring Your Own AAD App Registration (Advanced)"
       }
     ],
     "menus": {
@@ -535,6 +539,18 @@
           "type": "boolean",
           "default": false,
           "description": "When enabled, validate and back up the remote clientdata but do not send the PATCH. Useful for testing the safe-upload pipeline."
+        },
+        "powerAutomateCopilotDevKit.aadClientId": {
+          "type": "string",
+          "default": "",
+          "pattern": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "markdownDescription": "Application (client) ID of an Entra app registration with delegated Power Automate / Power Platform permissions. Leave empty to use the extension's default multi-tenant app registration (recommended). Set together with `#powerAutomateCopilotDevKit.aadTenantId#` to point at your own app; the extension then signs into VS Code's Microsoft auth provider as that app via `VSCODE_CLIENT_ID:` / `VSCODE_TENANT:` pseudo-scopes. Use the **Power Automate: Bring Your Own AAD App Registration (Advanced)** command to set this interactively."
+        },
+        "powerAutomateCopilotDevKit.aadTenantId": {
+          "type": "string",
+          "default": "",
+          "pattern": "^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$|^(?:organizations|common|consumers)$",
+          "markdownDescription": "Directory (tenant) ID to sign in against. Accepts a tenant GUID or one of `organizations` (any work/school tenant), `common`, or `consumers`. Required when `#powerAutomateCopilotDevKit.aadClientId#` is set. Leave empty to use the extension's default multi-tenant app registration."
         }
       }
     },

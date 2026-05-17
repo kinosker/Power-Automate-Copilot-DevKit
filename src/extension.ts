@@ -10,7 +10,9 @@ import { registerRemoteContentProvider } from './commands/remoteContent';
 import { openFlowDiff } from './commands/diffFlow';
 import { openFlowInPortal } from './commands/openFlowInPortal';
 import { refreshFlowFromServer } from './commands/refreshFlow';
-import { normalizeOrgUrl } from './platform/DataverseAuth';
+import { configureAadAppCommand } from './commands/configureAadApp';
+import { DataverseAuth, normalizeOrgUrl } from './platform/DataverseAuth';
+import { DataverseClient } from './platform/DataverseClient';
 import { assertSafeSolutionName, getSolutionsRoot } from './platform/validation';
 import { PinnedSolutionService } from './platform/PinnedSolutionService';
 import { getDiagnosticCollection, disposeDiagnosticCollection } from './validation/diagnostics';
@@ -42,7 +44,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
     context.subscriptions.push(output);
 
-    const auth = new AuthService(context.workspaceState);
+    const auth = new AuthService(context.workspaceState, output);
     const pins = new PinnedSolutionService(context.workspaceState);
     const tree = new FlowTreeProvider(auth, pins, output);
 
@@ -249,6 +251,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     register(commandId('refresh'), () => tree.refresh());
 
+    register(commandId('configureAadApp'), async () => {
+        try {
+            await configureAadAppCommand(auth, output);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Configure AAD App failed: ${e?.message ?? e}`);
+        } finally {
+            tree.refresh();
+        }
+    });
+
     register(commandId('validateFlow'), async (uriOrNode?: vscode.Uri | { resourceUri?: vscode.Uri }) => {
         const uri = uriOrNode instanceof vscode.Uri
             ? uriOrNode
@@ -270,7 +282,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         try {
             await auth.signIn();
             vscode.window.showInformationMessage('Signed in to Power Platform.');
-            const picked = await pickAndSelectEnvironment(auth, { signedInThisAction: true });
+            const picked = await pickAndSelectEnvironment(auth, output, { signedInThisAction: true });
             if (picked?.EnvironmentId && !pins.get(picked.EnvironmentId)) {
                 await vscode.commands.executeCommand(commandId('pickSolution'));
             }
@@ -294,7 +306,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     register(commandId('selectEnvironment'), async () => {
         try {
-            const picked = await pickAndSelectEnvironment(auth);
+            const picked = await pickAndSelectEnvironment(auth, output);
             // If no solution is pinned for the freshly picked environment,
             // chain straight into the solution picker so the user only takes
             // one action to get from "no env" to "ready to download".
@@ -543,6 +555,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 async function pickAndSelectEnvironment(
     auth: AuthService,
+    output: vscode.OutputChannel,
     opts?: { signedInThisAction?: boolean }
 ): Promise<OrgInfo | undefined> {
     const forceFreshSignIn = await shouldForceFreshSignIn(auth);
@@ -554,18 +567,102 @@ async function pickAndSelectEnvironment(
         } catch {
             /* best-effort: continue to sign-in */
         }
-        await auth.signIn();
+        try {
+            await auth.signIn();
+        } catch (e: any) {
+            // User cancelled the fallback consent dialog (or the initial
+            // Microsoft trust dialog). Treat as a quiet abort \u2014 no red toast.
+            if (isUserCancel(e)) {
+                output.appendLine('[selectEnvironment] sign-in cancelled by user.');
+                return undefined;
+            }
+            throw e;
+        }
     } else if (!(await auth.hasActiveProfile())) {
+        // Modal prompt: consistent with the Dataverse-only fallback dialog
+        // in AuthService.signIn so the entire auth flow uses centered
+        // prompts rather than mixing toasts and modals.
         const signIn = await vscode.window.showInformationMessage(
             'Sign in to Power Platform before selecting an environment.',
+            { modal: true },
             'Sign In'
         );
         if (signIn !== 'Sign In') {
             return undefined;
         }
-        await auth.signIn();
+        try {
+            await auth.signIn();
+        } catch (e: any) {
+            if (isUserCancel(e)) {
+                output.appendLine('[selectEnvironment] sign-in cancelled by user.');
+                return undefined;
+            }
+            throw e;
+        }
     }
-    return promptManualEnvironment(auth);
+
+    // Discovery order:
+    //   1. GDS (Dataverse audience, built-in MS auth client \u2014 no BYO AAD required).
+    //      Returns canonical EnvironmentId + Dataverse URL in one call.
+    //   2. Flow API (only when a BYO AAD app is configured) \u2014 surfaces envs that
+    //      have no Dataverse database (personal-flows-only envs).
+    //   3. Manual URL entry (always available as the final fallback).
+    // `listAllEnvironments` already swallows Flow API errors so the GDS-only
+    // path remains friction-free for users without Flow App consent.
+    let envs: OrgInfo[] = [];
+    try {
+        envs = await auth.listAllEnvironments();
+    } catch (e: any) {
+        output.appendLine(`[selectEnvironment] auto-list failed: ${e?.message ?? e}. Falling back to manual URL entry.`);
+    }
+
+    if (envs.length > 0) {
+        type Item = vscode.QuickPickItem & { env?: OrgInfo; manual?: boolean };
+        const items: Item[] = envs
+            .slice()
+            .sort((a, b) => String(a.DisplayName ?? a.EnvironmentId).localeCompare(String(b.DisplayName ?? b.EnvironmentId)))
+            .map(env => {
+                // Badge non-GDS rows so users can tell when a row only has
+                // Flow API provenance (no working Dataverse URL).
+                const srcBadge =
+                    env.Source === 'flowApi' ? ' (flow-only)' :
+                    env.Source === 'manual' ? ' (manual)' : '';
+                const regionBadge = env.Region ? ` \u00b7 ${env.Region}` : '';
+                return {
+                    label: `${String(env.DisplayName ?? env.FriendlyName ?? env.EnvironmentName ?? env.EnvironmentId)}${srcBadge}`,
+                    description: (env.EnvironmentUrl ?? '') + regionBadge,
+                    detail: env.EnvironmentId,
+                    env
+                };
+            });
+        items.push({
+            label: '$(edit) Enter environment URL manually…',
+            description: 'For environments not listed above',
+            manual: true
+        });
+
+        const picked = await vscode.window.showQuickPick<Item>(items, {
+            title: `Power Automate: Select Environment (${envs.length} available)`,
+            placeHolder: 'Choose an environment',
+            matchOnDescription: true,
+            matchOnDetail: true,
+            ignoreFocusOut: true
+        });
+        if (!picked) {
+            return undefined;
+        }
+        if (picked.env) {
+            await auth.selectEnvironment(picked.env);
+            output.appendLine(
+                `[selectEnvironment] picked ${picked.env.DisplayName} (${picked.env.EnvironmentId}) ` +
+                `from ${picked.env.Source ?? 'unknown'} source.`
+            );
+            return picked.env;
+        }
+        // user chose "manual" — fall through
+    }
+
+    return promptManualEnvironment(auth, output);
 }
 
 async function shouldForceFreshSignIn(auth: AuthService): Promise<boolean> {
@@ -613,7 +710,10 @@ async function hasDownloadedFlows(workspaceRoot: string): Promise<boolean> {
     return false;
 }
 
-async function promptManualEnvironment(auth: AuthService): Promise<OrgInfo | undefined> {
+async function promptManualEnvironment(
+    auth: AuthService,
+    output: vscode.OutputChannel
+): Promise<OrgInfo | undefined> {
     const raw = await vscode.window.showInputBox({
         prompt: 'Enter environment URL in this format: https://<environment>.crm.dynamics.com/',
         placeHolder: 'https://<environment>.crm.dynamics.com/',
@@ -635,23 +735,131 @@ async function promptManualEnvironment(auth: AuthService): Promise<OrgInfo | und
         return undefined;
     }
     const envUrl = normalizeOrgUrl(raw.trim());
-    const envId = deriveEnvironmentIdFromUrl(envUrl);
+
+    // Try to resolve the canonical Power Platform EnvironmentId by matching
+    // against the merged discovery list (GDS first, then Flow API extras).
+    // GDS works for any user with Dataverse access \u2014 no BYO AAD required \u2014
+    // so this path covers the common case without prompting again.
+    let matched: OrgInfo | undefined;
+    try {
+        const envs = await auth.listAllEnvironments();
+        const targetHost = new URL(envUrl).hostname.toLowerCase();
+        matched = findEnvByUrl(envs, envUrl);
+        if (!matched) {
+            output.appendLine(
+                `[selectEnvironment] No discovery entry matched host '${targetHost}'. ` +
+                `The signed-in account may not have access to this environment, ` +
+                `or the env is not yet provisioned in GDS.`
+            );
+        } else {
+            output.appendLine(
+                `[selectEnvironment] manual URL matched ${matched.Source ?? 'unknown'} entry ` +
+                `${matched.DisplayName} (${matched.EnvironmentId}).`
+            );
+        }
+    } catch (e: any) {
+        output.appendLine(`[selectEnvironment] discovery failed: ${e?.message ?? e}`);
+    }
+
+    if (matched?.EnvironmentId) {
+        await auth.selectEnvironment(matched);
+        return matched;
+    }
+
+    // No automatic match. Require the user to provide the canonical
+    // Power Platform EnvironmentId explicitly \u2014 we do NOT fall back to
+    // Dataverse OrganizationId because the maker portal URLs require the
+    // `Default-<tenantGuid>` form for the tenant default environment,
+    // and OrganizationId is semantically a different id.
+    const ENV_ID_RE =
+        /^(Default-)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    const envIdInput = await vscode.window.showInputBox({
+        prompt:
+            'Enter the Power Platform Environment ID. ' +
+            'Tenant default: "Default-<tenantGuid>". ' +
+            'Custom envs: a bare GUID (visible in the maker-portal URL after /environments/).',
+        placeHolder: 'Default-00000000-0000-0000-0000-000000000000  or  00000000-0000-0000-0000-000000000000',
+        ignoreFocusOut: true,
+        title: 'Power Automate: Set Environment ID',
+        validateInput: (v) => {
+            const t = (v ?? '').trim();
+            if (!t) { return 'Environment ID is required \u2014 portal links and flow APIs depend on it.'; }
+            return ENV_ID_RE.test(t)
+                ? null
+                : 'Expected "Default-<tenantGuid>" or a bare GUID. ' +
+                  'Find it in the maker portal URL: make.powerautomate.com/environments/<this>/...';
+        }
+    });
+    if (!envIdInput) {
+        return undefined;
+    }
+    const envId = envIdInput.trim();
+
+    // Best-effort: stamp OrganizationId via WhoAmI so commands that need a
+    // Dataverse GUID (e.g. AddSolutionComponent) work. We DO NOT use this
+    // id as the EnvironmentId fallback \u2014 OrganizationId \u2260 EnvironmentId.
+    let organizationId: string | undefined;
+    try {
+        const client = new DataverseClient(envUrl, new DataverseAuth(), output);
+        const who = await client.whoAmI();
+        organizationId = who.organizationId;
+    } catch (e: any) {
+        output.appendLine(`[selectEnvironment] WhoAmI for OrganizationId stamp failed: ${e?.message ?? e}.`);
+    }
+
     const env: OrgInfo = {
         EnvironmentId: envId,
+        OrganizationId: organizationId,
         EnvironmentUrl: envUrl,
         DisplayName: envId,
         FriendlyName: envId,
-        EnvironmentName: envId
+        EnvironmentName: envId,
+        Source: 'manual'
     };
     await auth.selectEnvironment(env);
     return env;
 }
 
-function deriveEnvironmentIdFromUrl(orgUrl: string): string {
-    const host = new URL(orgUrl).hostname.toLowerCase();
-    const token = host.split('.')[0] ?? 'environment';
-    const safe = token.replace(/[^a-z0-9_-]/g, '_').slice(0, 64);
-    return safe || 'environment';
+/**
+ * Match a Management-API-returned environment to a user-entered Dataverse
+ * URL by hostname (case-insensitive). Trailing slashes, paths, and
+ * differing protocols are tolerated. Returns the first match.
+ */
+function findEnvByUrl(envs: OrgInfo[], envUrl: string): OrgInfo | undefined {
+    let targetHost: string;
+    try {
+        targetHost = new URL(envUrl).hostname.toLowerCase();
+    } catch {
+        return undefined;
+    }
+    for (const e of envs) {
+        if (!e.EnvironmentUrl) { continue; }
+        try {
+            if (new URL(e.EnvironmentUrl).hostname.toLowerCase() === targetHost) {
+                return e;
+            }
+        } catch {
+            /* skip malformed */
+        }
+    }
+    return undefined;
+}
+
+/**
+ * True when an error from `AuthService.signIn` represents a user-initiated
+ * cancellation \u2014 either of VS Code\u2019s trust dialog, the Microsoft
+ * account-picker, the consent screen, or our own "Continue with
+ * Dataverse-only" fallback prompt. Used by callers to swallow the throw
+ * and exit quietly without showing a red error toast.
+ */
+function isUserCancel(e: unknown): boolean {
+    const msg = String((e as any)?.message ?? e ?? '').toLowerCase();
+    return (
+        msg.includes('sign-in cancelled') ||
+        msg.includes('cancelled') ||
+        msg.includes('canceled') ||
+        msg.includes('access_denied')
+    );
 }
 
 export function deactivate(): void {

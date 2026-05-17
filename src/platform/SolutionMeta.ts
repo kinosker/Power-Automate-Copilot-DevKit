@@ -38,6 +38,12 @@ export interface ConnectionReferenceManifestEntry {
     logicalName: string;
     displayName?: string;
     connectorId?: string;
+    /**
+     * Dataverse `connectionreferenceid` (GUID). Required to address the row
+     * via the Power Automate / Dataverse APIs when binding or updating the
+     * underlying connection (`PATCH connectionreferences(<id>)`).
+     */
+    connectionReferenceId?: string;
 }
 
 export interface ConnectionReferenceManifest {

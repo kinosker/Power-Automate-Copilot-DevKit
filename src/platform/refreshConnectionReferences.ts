@@ -49,7 +49,8 @@ export async function refreshConnectionReferenceManifest(
             entries: refs.map(r => ({
                 logicalName: r.logicalName,
                 displayName: r.displayName,
-                connectorId: r.connectorId
+                connectorId: r.connectorId,
+                connectionReferenceId: r.connectionReferenceId
             }))
         });
         ConnectionReferenceService.clearCache(solutionFolder);
