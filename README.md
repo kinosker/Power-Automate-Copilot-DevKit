@@ -44,6 +44,7 @@ Before installing the extension, make sure you have:
 ### Installation from VS Code Extension
 
 Search for Power Automate Copilot and install
+
 <img width="395" height="194" alt="image" src="https://github.com/user-attachments/assets/9aaf8520-db79-443d-8bdb-112f10c4e31d" />
 
 
