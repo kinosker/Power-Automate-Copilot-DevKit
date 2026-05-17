@@ -127,6 +127,45 @@ Hard rules for the `ref/error/` folder:
   the relevant slice of `inputs` from the report rather than
   guessing.
 
+## Resubmitting a fixed flow (verifying the repair)
+
+After you have proposed and applied a fix, the natural next step is to
+verify it by replaying the run that was failing. The extension exposes
+`#resubmitFlowRun` (and the **Power Automate: Resubmit Flow Run**
+command) for exactly this — it calls the Power Automate Flow API's
+`resubmit` endpoint, which re-runs the flow with the **original
+trigger inputs** of the chosen run.
+
+Hard rules:
+
+- `#resubmitFlowRun` **mutates the user's environment**. Side effects
+  of the run (record writes, emails sent, HTTP calls, etc.) will
+  happen again. Never call it speculatively or as part of an
+  exploratory loop.
+- Only call it after the user has **explicitly** asked to resubmit /
+  replay / retry / rerun the run. A user saying "fix the flow" is NOT
+  consent to resubmit; it is consent to fix. Ask first if intent is
+  ambiguous: *"I've applied the fix and uploaded it. Want me to
+  resubmit run `<runId>` to verify? It will replay with the original
+  trigger inputs and re-run side effects."*
+- The tool itself shows a blocking modal with the flow, environment,
+  and run details. That modal is the final gate. If the user cancels
+  it, the tool returns a cancellation message — treat that as
+  authoritative and do NOT retry without a fresh user instruction.
+- Always pass an explicit `runId` when the user is reacting to a
+  specific run (e.g. the one in a saved `ref/error/<slug>/...`
+  report). Use the `run.runId` value from that file. Without
+  `runId`, the tool falls back to the most-recent failed run, which
+  may not be the one the user meant.
+- The typical sequence is: `#analyzeFailedFlowRun` → read the saved
+  report → propose fix → `#uploadFlow` (modal-gated) to push the fix
+  → ask the user for permission to verify → `#resubmitFlowRun`
+  (modal-gated) with the `runId` from the report.
+- Resubmit is async: the API returns 202 with no body and the new run
+  is queued. Tell the user to check the portal for status; don't
+  immediately call `#analyzeFailedFlowRun` expecting the new run to
+  be present.
+
 ## Dataverse authoring
 
 - The Dataverse / Dynamics 365 / D365 CE / D365 CRM / CDS connector

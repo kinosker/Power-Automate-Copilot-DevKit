@@ -27,6 +27,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 - Composing or fixing a WDL expression (`@{...}` / `@expression(...)`)
 - Repointing a flow at a different connection reference
 - Diagnosing why a flow run failed (the user asks to debug / analyze / fix a failing flow)
+- Verifying a fix by resubmitting / replaying a failed or cancelled run
 
 ## Where the rules live
 
@@ -86,6 +87,17 @@ so the assistant's suggestions and the extension's diagnostics agree.
   round-robin). Never reference a path from chat history that
   predates the current session, and never write into `ref/error/`
   yourself.
+- **Resubmit is consent-gated, not exploratory** \u2014 `#resubmitFlowRun`
+  replays a run on the live environment with its ORIGINAL trigger
+  inputs and re-runs every side effect. Only call it after the user
+  has explicitly asked to resubmit / replay / retry / rerun, typically
+  AFTER you have uploaded a fix. Pass the `runId` from the
+  `ref/error/<slug>/...` report so the right run is replayed. The
+  tool always shows a blocking modal; if the user cancels, do NOT
+  retry without a fresh instruction. Default workflow:
+  `#analyzeFailedFlowRun` \u2192 read saved report \u2192 propose fix \u2192
+  `#uploadFlow` \u2192 ask permission \u2192 `#resubmitFlowRun` with explicit
+  `runId`.
 
 ## How the assistant picks these files up
 

@@ -97,6 +97,11 @@
         "icon": "$(error)"
       },
       {
+        "command": "powerAutomateCopilotDevKit.resubmitFlowRun",
+        "title": "Power Automate: Resubmit Flow Run",
+        "icon": "$(debug-restart)"
+      },
+      {
         "command": "powerAutomateCopilotDevKit.viewFlowDiff",
         "title": "Power Automate: Compare Flow with Server",
         "icon": "$(diff)"
@@ -189,6 +194,11 @@
         },
         {
           "command": "powerAutomateCopilotDevKit.analyzeFailedFlowRun",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
+          "group": "powerAutomateCopilotDevKit@2"
+        },
+        {
+          "command": "powerAutomateCopilotDevKit.resubmitFlowRun",
           "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
           "group": "powerAutomateCopilotDevKit@2"
         },
@@ -408,6 +418,37 @@
             "top": {
               "type": "number",
               "description": "OPTIONAL. Number of most-recent failed runs to fetch (default 5, max 25)."
+            }
+          }
+        }
+      },
+      {
+        "name": "powerautomatecopilotdevkit_resubmitFlowRun",
+        "displayName": "Resubmit Power Automate Flow Run",
+        "modelDescription": "Resubmit (replay) a failed or cancelled Power Automate flow run using its ORIGINAL trigger inputs via the Power Automate Flow API. MUTATES the user's environment \u2014 every invocation shows a blocking modal confirmation that the user MUST accept. Use ONLY after the user has explicitly asked to retry / resubmit / replay / rerun a specific run, typically AFTER you have proposed a fix and the user wants to verify it. Examples: 'resubmit the failed run', 'replay that run', 'retry the last failure', 'rerun the cancelled run'. The `runId` argument is OPTIONAL \u2014 omit it to resubmit the single most-recent failed run; pass it explicitly when the user pointed at a specific run (e.g. one from a saved error report under `ref/error/`). The `flowName` argument is OPTIONAL when the solution contains exactly one flow. The `solutionName` argument is OPTIONAL and defaults to the workspace's pinned solution. REQUIREMENT: Power Automate (Flow) consent must have been granted on this workspace. WARNING: side effects of the run (record writes, emails sent, HTTP calls, etc.) will happen AGAIN. Do NOT call this tool without explicit, unambiguous user permission. If the user cancels the modal, the tool returns a cancellation message \u2014 treat that as authoritative and do NOT retry without a fresh user instruction.",
+        "userDescription": "Replay a failed or cancelled flow run with its original trigger inputs.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "resubmitFlowRun",
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "flowName": {
+              "type": "string",
+              "description": "OPTIONAL. Display name of the flow, its internal Name, or its workflow GUID. Omit when the solution contains exactly one flow."
+            },
+            "solutionName": {
+              "type": "string",
+              "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution that contains the flow. Omit to use the solution pinned to this workspace."
+            },
+            "runId": {
+              "type": "string",
+              "description": "OPTIONAL. The Flow API run id (the value the analyzer surfaces as `run.runId`) to resubmit. Omit to resubmit the most-recent failed run. PREFER passing this explicitly when the user is reacting to a specific run from a saved error report."
             }
           }
         }

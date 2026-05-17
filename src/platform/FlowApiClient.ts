@@ -145,6 +145,53 @@ export class FlowApiClient {
     }
 
     /**
+     * Resubmit (replay) a flow run using its original trigger inputs.
+     * Endpoint:
+     *   `POST .../flows/{flowId}/triggers/{triggerName}/histories/{runId}/resubmit`
+     *
+     * `triggerName` is the operation-name key from the flow definition's
+     * `triggers` map (also surfaced as `run.properties.trigger.name`).
+     * The service returns 202 Accepted with no body — the new run is
+     * queued asynchronously and shows up under the same flow with a
+     * fresh `runId`.
+     *
+     * Caller is responsible for explicit user consent BEFORE calling
+     * this method — it mutates the user's environment.
+     */
+    async resubmitRun(
+        envId: string,
+        flowId: string,
+        triggerName: string,
+        runId: string
+    ): Promise<void> {
+        const session = await this.auth.getFlowSession({ createIfNone: false });
+        if (!session?.accessToken) {
+            throw new Error(
+                'No Power Automate (Flow) session. Click "Grant Power Automate (Flow) access" first.'
+            );
+        }
+        const url =
+            `${FlowApiClient.BASE}/providers/Microsoft.ProcessSimple/environments/${encodeURIComponent(envId)}` +
+            `/flows/${encodeURIComponent(flowId)}/triggers/${encodeURIComponent(triggerName)}` +
+            `/histories/${encodeURIComponent(runId)}/resubmit` +
+            `?api-version=${FlowApiClient.API_VERSION}`;
+        this.log(`> POST ${url} (Flow API resubmit)`);
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${session.accessToken}`,
+                Accept: 'application/json',
+                'Content-Length': '0'
+            }
+        });
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            throw new Error(`Flow API resubmit HTTP ${res.status}: ${body.slice(0, 500)}`.trim());
+        }
+        this.log(`[flow-api] resubmit accepted (HTTP ${res.status}) for run ${runId}.`);
+    }
+
+    /**
      * Convenience: collect a failed run's failed actions with their
      * resolved inputs / outputs blobs inlined. Caps blob sizes to keep
      * the payload sane for LM consumption. Best for "analyze this run"

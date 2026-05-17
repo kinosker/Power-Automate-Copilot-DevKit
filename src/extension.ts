@@ -29,6 +29,8 @@ import { GetDataverseTableMetadataTool } from './tools/getDataverseTableMetadata
 import { GetDataverseOptionSetTool } from './tools/getDataverseOptionSetTool';
 import { AnalyzeFailedFlowRunTool } from './tools/analyzeFailedFlowRunTool';
 import { analyzeFailedFlowRunCommand } from './commands/analyzeFailedFlowRun';
+import { ResubmitFlowRunTool } from './tools/resubmitFlowRunTool';
+import { resubmitFlowRunCommand } from './commands/resubmitFlowRun';
 import { FlowErrorReportStore } from './platform/FlowErrorReportStore';
 import { DataverseMetadataCache } from './platform/DataverseMetadataCache';
 import { openCreateConnections } from './commands/createConnections';
@@ -220,6 +222,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.lm.registerTool(
                 lmToolName('analyzeFailedFlowRun'),
                 new AnalyzeFailedFlowRunTool(auth, tree, pins, output, errorStore)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                lmToolName('resubmitFlowRun'),
+                new ResubmitFlowRunTool(auth, tree, pins, output)
             )
         );
 
@@ -525,6 +533,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await analyzeFailedFlowRunCommand(auth, tree, pins, output, errorStore, node);
         } catch (e: any) {
             vscode.window.showErrorMessage(`Analyze failed flow run failed: ${e.message ?? e}`);
+        }
+    });
+
+    register(commandId('resubmitFlowRun'), async (node?: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+        try {
+            await resubmitFlowRunCommand(auth, tree, pins, output, node);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Resubmit flow run failed: ${e.message ?? e}`);
         }
     });
 
