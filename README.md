@@ -108,6 +108,8 @@ GHCP prompts:
 Analyze the latest failed run for this flow.
 ```
 
+<img width="2560" height="1504" alt="Analyze Flow" src="https://github.com/user-attachments/assets/2ce253b8-259b-4131-89fe-40c6584e0848" />
+
 After editing:
 
 1. Save the flow file.
