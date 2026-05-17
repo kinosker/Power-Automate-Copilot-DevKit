@@ -2,8 +2,8 @@
 
 Power Automate Copilot DevKit brings Power Automate cloud flow editing into VS Code, with guardrails for working safely against real Dataverse solutions.
 
-- Download and edit flows locally as readable JSON, then validate, compare, and upload changes back with drift checks and backups.
-- Install bundled GitHub Copilot (GHCP) skills so Copilot can help edit flow JSON, expressions, error handling, and performance patterns directly in your workspace.
+- Edit flows like code — download them as readable JSON, edit locally, and upload safely with built-in guardrails that catch conflicts before publish to prevent us from overwriting the server copy if it has changed since you pulled it.
+- Supercharge Copilot with bundled skills — turn GHCP into a Power Automate expert that authors flow JSON, expressions, error handling, and performance patterns the right way.
 - Fix failing flows in minutes — let GHCP, with guided instructions, troubleshoot the failed run, root-cause the issue against the  flow and fix it, then resubmit the run, all without leaving VS Code.
 
 ## Features
@@ -94,6 +94,18 @@ Example:
 <img width="1280" height="752" alt="Final - View Flow Fast" src="https://github.com/user-attachments/assets/0ca8021c-4047-4482-b2c2-57d657dfb817" />
 
 
+### Troubleshooting A Flow
+
+When a cloud flow run fails, you can pull its error report straight into VS Code and have GHCP root-cause it against the local flow JSON.
+
+1. Expand the failing flow in the Power Automate tree and click the **Analyze Failed Flow Run with Copilot** action (`$(search)` icon on the flow row), or run `Power Automate: Analyze Failed Flow Run with Copilot` from the command palette.
+2. The extension downloads the latest failed run, saves the action-level error report under `ref/error/<flow>/`, opens it in the editor, and hands it to GitHub Copilot Chat alongside the local flow JSON.
+3. Review Copilot's root-cause analysis, then ask it to apply the fix to the flow JSON.
+
+GHCP prompts:
+```text
+Analyze the latest failed run for this flow.
+```
 
 After editing:
 
