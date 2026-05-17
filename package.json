@@ -92,6 +92,11 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "powerAutomateCopilotDevKit.analyzeFailedFlowRun",
+        "title": "Power Automate: Analyze Failed Flow Run",
+        "icon": "$(error)"
+      },
+      {
         "command": "powerAutomateCopilotDevKit.viewFlowDiff",
         "title": "Power Automate: Compare Flow with Server",
         "icon": "$(diff)"
@@ -181,6 +186,11 @@
           "command": "powerAutomateCopilotDevKit.viewFlowInPortal",
           "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
           "group": "powerAutomateCopilotDevKit@1"
+        },
+        {
+          "command": "powerAutomateCopilotDevKit.analyzeFailedFlowRun",
+          "when": "view == powerAutomateCopilotDevKit.tree && viewItem == flow",
+          "group": "powerAutomateCopilotDevKit@2"
         },
         {
           "command": "powerAutomateCopilotDevKit.refreshFlow",
@@ -369,6 +379,37 @@
           "required": [
             "connectionReferenceLogicalName"
           ]
+        }
+      },
+      {
+        "name": "powerautomatecopilotdevkit_analyzeFailedFlowRun",
+        "displayName": "Analyze Failed Power Automate Flow Run",
+        "modelDescription": "Fetch the most recent failed run(s) of a Power Automate flow via the Power Automate Flow API and return a structured JSON report — per-run status, error code/message, and per-failed-action error details with inputs and outputs. Use when the user asks to debug, analyze, diagnose, or troubleshoot a failing flow, or asks why a flow failed / errored / crashed / broke. Examples: 'why is my Approval flow failing', 'analyze the last failed run', 'debug the Notification flow', 'show me the error from yesterday's run'. The `flowName` argument is OPTIONAL when the solution contains exactly one flow. The `solutionName` argument is OPTIONAL and defaults to the workspace's pinned solution. The `top` argument is OPTIONAL (default 5, max 25) and caps how many recent failed runs to return. REQUIREMENT: Power Automate (Flow) consent must have been granted on this workspace — if the tool reports that access has not been granted, ask the user to click 'Grant Power Automate (Flow) access' in the Power Automate tree view and retry. Read-only. Do NOT use this tool to upload, download, modify, retry, or resubmit flows or runs.",
+        "userDescription": "Fetch recent failed runs of a flow and return structured error details for analysis.",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "analyzeFailedFlowRun",
+        "tags": [
+          "power-automate-copilot-devkit",
+          "power-automate",
+          "github-copilot"
+        ],
+        "when": "workspaceFolderCount > 0",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "flowName": {
+              "type": "string",
+              "description": "OPTIONAL. Display name of the flow, its internal Name, or its workflow GUID. Omit when the solution contains exactly one flow."
+            },
+            "solutionName": {
+              "type": "string",
+              "description": "OPTIONAL. Unique name (preferred) or friendly name of the solution that contains the flow. Omit to use the solution pinned to this workspace."
+            },
+            "top": {
+              "type": "number",
+              "description": "OPTIONAL. Number of most-recent failed runs to fetch (default 5, max 25)."
+            }
+          }
         }
       },
       {

@@ -26,6 +26,7 @@ so the assistant's suggestions and the extension's diagnostics agree.
 - Auditing a `Foreach` that mutates data
 - Composing or fixing a WDL expression (`@{...}` / `@expression(...)`)
 - Repointing a flow at a different connection reference
+- Diagnosing why a flow run failed (the user asks to debug / analyze / fix a failing flow)
 
 ## Where the rules live
 
@@ -73,6 +74,18 @@ so the assistant's suggestions and the extension's diagnostics agree.
   language whether to pull schema context, then call the tools. The
   `inputs.parameters.entityName` slot is the **EntitySetName** (plural
   collection name), never the LogicalName.
+- **Failed-run forensics live on disk, not in chat** \u2014 when the user
+  asks why a flow failed, call `#analyzeFailedFlowRun`. The tool
+  persists the full report (including failed-action inputs / outputs)
+  to `ref/error/<flow-slug>/<flow-slug>-error-<1|2|3>.json` and
+  returns ONLY a compact summary plus that path. Read the saved file
+  with your file-read tool before proposing a fix; quote the failing
+  action's `name`, `error.code`, and `error.message` verbatim. The
+  folder is **session-scoped**: the extension wipes it on every
+  activation, and at most 3 reports per flow live there (rotating in
+  round-robin). Never reference a path from chat history that
+  predates the current session, and never write into `ref/error/`
+  yourself.
 
 ## How the assistant picks these files up
 

@@ -27,6 +27,9 @@ import { LinkConnectionToSolutionTool } from './tools/linkConnectionToSolutionTo
 import { ListDataverseTablesTool } from './tools/listDataverseTablesTool';
 import { GetDataverseTableMetadataTool } from './tools/getDataverseTableMetadataTool';
 import { GetDataverseOptionSetTool } from './tools/getDataverseOptionSetTool';
+import { AnalyzeFailedFlowRunTool } from './tools/analyzeFailedFlowRunTool';
+import { analyzeFailedFlowRunCommand } from './commands/analyzeFailedFlowRun';
+import { FlowErrorReportStore } from './platform/FlowErrorReportStore';
 import { DataverseMetadataCache } from './platform/DataverseMetadataCache';
 import { openCreateConnections } from './commands/createConnections';
 import {
@@ -47,6 +50,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const auth = new AuthService(context.workspaceState, output);
     const pins = new PinnedSolutionService(context.workspaceState);
     const tree = new FlowTreeProvider(auth, pins, output);
+
+    // Session-scoped store for flow-run error reports. Cleared on every
+    // activation so Copilot never references stale reports from a
+    // previous troubleshooting session.
+    const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const errorStore = new FlowErrorReportStore(wsRoot0, output);
+    void errorStore.reset();
 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider(TREE_VIEW_ID, tree)
@@ -204,6 +214,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.lm.registerTool(
                 lmToolName('linkConnectionToSolution'),
                 new LinkConnectionToSolutionTool(auth, tree, pins, output)
+            )
+        );
+        context.subscriptions.push(
+            vscode.lm.registerTool(
+                lmToolName('analyzeFailedFlowRun'),
+                new AnalyzeFailedFlowRunTool(auth, tree, pins, output, errorStore)
             )
         );
 
@@ -501,6 +517,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await openFlowInPortal(auth, node.flow);
         } catch (e: any) {
             vscode.window.showErrorMessage(`View in Power Automate failed: ${e.message ?? e}`);
+        }
+    });
+
+    register(commandId('analyzeFailedFlowRun'), async (node?: { flow?: FlowInfo; solution?: SolutionInfo }) => {
+        try {
+            await analyzeFailedFlowRunCommand(auth, tree, pins, output, errorStore, node);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Analyze failed flow run failed: ${e.message ?? e}`);
         }
     });
 

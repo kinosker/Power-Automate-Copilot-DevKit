@@ -92,6 +92,41 @@ the checks in `src/validation/flowLinter.ts`.
   that as authoritative and don't retry without a fresh user
   instruction.
 
+## Failed-run analysis (the "why is my flow failing?" workflow)
+
+The typical troubleshooting sequence is:
+
+1. User asks to debug / analyze / diagnose a failing flow.
+2. You call `#analyzeFailedFlowRun` (or the user runs the
+   **Power Automate: Analyze Failed Flow Run** command / right-click
+   on a flow in the tree).
+3. The tool persists the **full** report to
+   `ref/error/<flow-slug>/<flow-slug>-error-<1|2|3>.json` and returns
+   ONLY a compact summary plus the saved path.
+4. Read that file via your file-read tool when you need the inputs /
+   outputs / stack-trace detail to propose a fix. Do NOT ask the
+   user to paste the JSON — it is already on disk in the workspace.
+
+Hard rules for the `ref/error/` folder:
+
+- The folder is **session-scoped scratch**. The extension wipes it on
+  every activation, so files that were there before the current
+  session are gone — never reference paths from chat history that
+  predate the current activation.
+- At most **3 reports per flow** live there at any time. The store
+  rotates files in round-robin order (`-error-1.json` →
+  `-error-2.json` → `-error-3.json` → overwrite `-error-1.json` …).
+  When you read a file, treat its `run.runId` and `run.startTime` as
+  authoritative — file name index does NOT correspond to recency.
+- Do NOT create, modify, or commit files under `ref/error/`
+  yourself. The folder belongs to the extension. Suggesting it be
+  added to `.gitignore` is fine; writing into it from chat is not.
+- When proposing a fix, cite the specific failed action by its `name`
+  and quote the `error.code` / `error.message` from the report. If
+  the cause needs inputs (e.g. a malformed expression value), quote
+  the relevant slice of `inputs` from the report rather than
+  guessing.
+
 ## Dataverse authoring
 
 - The Dataverse / Dynamics 365 / D365 CE / D365 CRM / CDS connector

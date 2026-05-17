@@ -9,7 +9,7 @@ export const COMMAND_PREFIX = EXTENSION_PREFIX;
 
 export const LM_TOOL_PREFIX = 'powerautomatecopilotdevkit';
 export const SKILL_SLUG = 'power-automate-copilot-devkit';
-export const SKILL_BUNDLE_VERSION = '2026.05.16.1';
+export const SKILL_BUNDLE_VERSION = '2026.05.17.1';
 export const SKILL_VERSION_RELATIVE_PATH = '.github/.power-automate-copilot-devkit-skill-version';
 
 export const WORKSPACE_DATA_DIR = '.power-automate-copilot-devkit';
