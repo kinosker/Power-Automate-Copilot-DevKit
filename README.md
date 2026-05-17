@@ -4,6 +4,7 @@ Power Automate Copilot DevKit brings Power Automate cloud flow editing into VS C
 
 - Download and edit flows locally as readable JSON, then validate, compare, and upload changes back with drift checks and backups.
 - Install bundled GitHub Copilot (GHCP) skills so Copilot can help edit flow JSON, expressions, error handling, and performance patterns directly in your workspace.
+- Fix failing flows in minutes — let GHCP, with guided instructions, troubleshoot the failed run, root-cause the issue against the  flow and fix it, then resubmit the run, all without leaving VS Code.
 
 ## Features
 
@@ -17,7 +18,16 @@ Power Automate Copilot DevKit brings Power Automate cloud flow editing into VS C
 - Compare a local flow with the server copy before uploading.
 - Pull a server flow and discard local changes when the cloud version should win.
 - List and link connection references to support environment-specific connections.
+- Refresh connection references on a flow after a connection is rebound in the environment.
 - Open flows or solutions directly in the Power Automate and Power Apps maker portals.
+
+### Run Telemetry & AI-Assisted Triage
+- **Analyze Failed Flow Run with Copilot** — download the latest failed run's action error report, save it under `ref/error/`, and hand it to GitHub Copilot Chat for root-cause analysis alongside the local flow JSON. Available as a per-flow tree action (`$(search)` icon) and as the `#analyzeFailedFlowRun` language-model tool.
+- **Resubmit Flow Run** — resubmit a previously-failed run from VS Code once the underlying flow has been fixed.
+
+### Dataverse Metadata For Authoring
+- Built-in metadata tools (`#listDataverseTables`, `#dataverseTableMetadata`, `#dataverseOptionSet`) let Copilot resolve table logical names, attribute LogicalNames, lookup binding shapes (`@odata.bind`), required-on-create fields, and picklist integer values directly from your environment — so it stops guessing when writing Dataverse actions.
+- Per-environment on-disk cache under `.power-automate-copilot-devkit/dataverse-metadata/<envId>/` with a per-call **Use Cached** / **Refresh** prompt. Clear it from the palette via **Power Automate: Clear Dataverse Metadata Cache**.
   
 ## Installation Guide
 
@@ -118,8 +128,14 @@ Help me make this flow use safer retry and runAfter patterns.
 | `Power Automate: Pull Flow and Discard Local Changes` | Replace local JSON with the current server flow. |
 | `Upload Flow` | Upload the local flow JSON to Dataverse. |
 | `Power Automate: View Flow in Portal` | Open the flow in the Power Automate maker portal. |
+| `Power Automate: Analyze Failed Flow Run with Copilot` | Download the latest failed run report and hand it to GitHub Copilot Chat for analysis. |
+| `Power Automate: Resubmit Flow Run` | Resubmit a previously-failed run after fixing the flow. |
+| `Power Automate: Refresh Connection References` | Re-resolve connection references on a flow after rebinding a connection. |
 | `Power Automate: Create a Connection` | Open the pinned solution in Power Apps to add a connection or connection reference. |
 | `Power Automate: Install Flow Skill into Workspace` | Install the bundled GHCP skill docs into the workspace. |
+| `Power Automate: Clear Dataverse Metadata Cache` | Wipe the cached Dataverse table / option-set metadata for the current environment. |
+| `Power Automate: Bring Your Own AAD App Registration (Advanced)` | Point sign-in at your own Entra app registration for Flow API access (see [Flow APIs](#flow-apis-advanced-opt-in)). |
+| `Power Automate: Grant Power Automate Access` | Provision the Power Automate Service principal in your tenant the first time you opt into Flow APIs. |
 
 ### What Upload Checks
 
@@ -163,6 +179,22 @@ Most users can keep the defaults.
 | `powerAutomateCopilotDevKit.dryRunUpload` | `false` | You want to test the upload pipeline without sending changes. |
 
 In untrusted workspaces, workspace-scoped `solutionsRoot` values are ignored. Use user or global settings, or trust the workspace.
+
+### Flow APIs (advanced, opt-in)
+
+Most features in this extension talk to **Dataverse** (`https://<org>.crm*.dynamics.com`) using VS Code's built-in Microsoft account provider. Those work out of the box with no extra setup.
+
+A small set of capabilities — environment auto-discovery via `api.flow.microsoft.com`, failed-run inspection, run resubmit, and a few connection-reference helpers — hit the **Power Automate Service API** instead. VS Code's built-in first-party client is **not pre-authorized** for that resource and returns `AADSTS65002` on the token request, so the extension does not call the Flow API unless you opt in.
+
+To opt in:
+
+1. Register an Entra (Azure AD) app in your tenant (multi-tenant, public-client, with `http://localhost` and `https://vscode.dev/redirect` as redirect URIs).
+2. Grant it **delegated** permissions: Power Automate Service `User`, Dataverse `user_impersonation`, Microsoft Graph `User.Read`.
+3. **Grant tenant-wide admin consent** for those permissions. This step is non-optional — without admin consent the Flow API call still fails, and home-tenant users may additionally hit `AADSTS650051` ("SPN already present") on first sign-in.
+4. Run **Power Automate: Bring Your Own AAD App Registration (Advanced)** and paste the app's Client ID and Tenant ID, or set `powerAutomateCopilotDevKit.aadClientId` / `powerAutomateCopilotDevKit.aadTenantId` directly.
+5. If your tenant has never used Power Automate, also run **Power Automate: Grant Power Automate Access** once to provision the Power Automate Service principal in your directory.
+
+Until admin consent has been granted, the extension will fall back to manual environment URL entry and skip the Flow API code paths — every Dataverse-only feature (download, upload, drift check, validation, GHCP skills, Dataverse metadata tools) keeps working without it.
 
 ### Troubleshooting
 
